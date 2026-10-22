@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { Apollon, ApollonEditor, UMLDiagramType } from '@tumaet/apollon'
 import { useNavigate, useParams } from 'react-router-dom'
-import { ArrowLeft, Bot, Check, Download, FileCode2, LoaderCircle, Network, Pencil, Sparkles, Trash2, Upload, X } from 'lucide-react'
+import { ArrowLeft, Bot, Check, Download, FileCode2, ImagePlus, LoaderCircle, Lock, Mic, Network, Pencil, Sparkles, Square, Trash2, Upload, X } from 'lucide-react'
 import '@tumaet/apollon/style.css'
 
 import { analyzeDiagram } from '../api/aiApi'
@@ -728,28 +728,25 @@ function DiagramEditor() {
       <div className="diagram-canvas">
         <header className="diagram-file-actions editor-topbar">
           <button type="button" className="icon-button" title="Volver al proyecto" aria-label="Volver al proyecto" onClick={() => navigate(versionId ? `/projects/${projectId}/versions/${versionId}` : `/projects/${projectId}`)}><ArrowLeft size={18} /></button>
-          <div className="editor-title-block"><span>{projectName} / {versionName} /</span>
+          <div className="editor-title-block"><span title={`${projectName} / ${versionName}`}>{projectName} / {versionName} /</span>
           {renaming ? (
             <form className="inline-rename" onSubmit={handleDiagramRename} onKeyDown={(event) => { if (event.key === 'Escape') { setRenaming(false); setRenameName(diagramName) } }}>
               <input value={renameName} maxLength={120} autoFocus onChange={(event) => setRenameName(event.target.value)} required />
               <button type="submit" className="icon-button primary-icon" title="Guardar" aria-label="Guardar nombre"><Check size={16} /></button><button type="button" className="icon-button" title="Cancelar" aria-label="Cancelar edición" onClick={() => { setRenaming(false); setRenameName(diagramName); setRenameError('') }}><X size={16} /></button>
             </form>
           ) : <strong>{diagramName}</strong>}{!isViewer && diagramId && !renaming && <button type="button" className="icon-button" title="Renombrar diagrama" aria-label="Renombrar diagrama" onClick={() => setRenaming(true)}><Pencil size={15} /></button>}<small className={`save-status ${saveStatus === 'Error al guardar' ? 'is-error' : ''}`}>{saveStatus}</small></div>
-          <div className="editor-action-group"><button type="button" onClick={() => window.dispatchEvent(new Event('agent:open'))}><Bot size={16}/> Agente</button><button type="button" disabled={!diagramId}
+          <div className="editor-action-group"><button type="button" className="icon-button" title="Agente de ayuda" aria-label="Abrir el agente de ayuda" onClick={() => window.dispatchEvent(new Event('agent:open'))}><Bot size={16}/></button><button type="button" disabled={!diagramId}
             title={diagramId ? 'Exportar diagrama' : 'Guarda el diagrama antes de exportarlo'}
             onClick={() => setExportOpen(true)}><Download size={16} /> Exportar</button>
-          <button type="button" disabled={!diagramId} onClick={() => { setCodegenOpen(true); setCodegenValidation(undefined); setCodegenError('') }}><FileCode2 size={16} /> Código
+          <button type="button" disabled={!diagramId} className="primary-action" onClick={() => { setCodegenOpen(true); setCodegenValidation(undefined); setCodegenError('') }}><FileCode2 size={16} /> Generar código
           </button>
           {!isViewer && <button type="button" onClick={() => setImportOpen(true)}><Upload size={16} /> Importar</button>}
-          {diagramId && <button type="button" className="primary-action" onClick={() => { setSequenceOpen(true); setSequenceError('') }}><Network size={16} /> Secuencia</button>}
-          {!isViewer && diagramId && <button type="button" className="danger-action" onClick={() => setDeleteOpen(true)}><Trash2 size={16}/> Eliminar</button>}</div>
+          {diagramId && <button type="button" onClick={() => { setSequenceOpen(true); setSequenceError('') }}><Network size={16} /> Secuencia</button>}
+          {!isViewer && diagramId && <button type="button" className="icon-button danger-ghost" title="Eliminar diagrama" aria-label="Eliminar diagrama" onClick={() => setDeleteOpen(true)}><Trash2 size={16}/></button>}</div>
         </header>
         {renameError && <div className="editor-inline-error">{renameError}</div>}
         {lockStatus && (
-          <div style={{ position: 'absolute', zIndex: 20, top: 12, left: '50%', transform: 'translateX(-50%)',
-            padding: '8px 12px', borderRadius: 6, background: '#111827', color: 'white' }}>
-            {lockStatus}
-          </div>
+          <div className="lock-chip" role="status"><Lock size={14} aria-hidden="true" />{lockStatus}</div>
         )}
         <Apollon
         key={diagramId ?? 'new'}
@@ -925,10 +922,10 @@ function DiagramEditor() {
         />
       </div>
 
-      <aside className="ai-panel">
-        <h2>Asistente IA</h2>
+      <aside className="ai-panel" aria-label="Asistente de modelado">
+        <header className="ai-panel-header"><Sparkles size={18} aria-hidden="true" /><div><h2>Asistente de modelado</h2><p>Revisa el diagrama y propone cambios que tú confirmas.</p></div></header>
         <section className="vision-import">
-          <h3>Importar desde imagen</h3>
+          <h3>Desde una foto o captura</h3>
           <input
             ref={imageInputRef}
             type="file"
@@ -937,8 +934,8 @@ function DiagramEditor() {
             onChange={(event) => selectImage(event.target.files?.[0])}
           />
           {!imageFile && (
-            <button type="button" onClick={() => imageInputRef.current?.click()}>
-              📷 Imagen
+            <button type="button" className="dropzone-button" onClick={() => imageInputRef.current?.click()}>
+              <ImagePlus size={18} aria-hidden="true" /><span>Elegir imagen<small>PNG, JPG o WebP, hasta 10 MB</small></span>
             </button>
           )}
           {imageFile && (
@@ -949,7 +946,7 @@ function DiagramEditor() {
               <input
                 value={imageInstruction}
                 onChange={(event) => setImageInstruction(event.target.value)}
-                placeholder="Instruccion opcional"
+                placeholder="Instrucción opcional, por ejemplo: ignora las notas"
                 maxLength={500}
               />
               <div className="ai-suggestion-actions">
@@ -973,7 +970,7 @@ function DiagramEditor() {
           )}
         </section>
         <form onSubmit={handleAnalyze}>
-          <label htmlFor="ai-message">¿Qué quieres revisar?</label>
+          <label htmlFor="ai-message">Revisión del diagrama</label>
           <div className="ai-voice-input">
             <textarea
               id="ai-message"
@@ -992,7 +989,7 @@ function DiagramEditor() {
               title={audioRecorder.isSupported ? 'Grabar instrucción' : 'Grabación de audio no disponible'}
               onClick={() => audioRecorder.isRecording ? audioRecorder.stop() : audioRecorder.start()}
             >
-              {audioRecorder.isRecording ? '■' : '🎙️'}
+              {audioRecorder.isRecording ? <Square size={16} aria-hidden="true" /> : <Mic size={18} aria-hidden="true" />}
             </button>
           </div>
           {audioRecorder.isRecording && <span className="ai-speech-status">Grabando…</span>}
@@ -1001,8 +998,8 @@ function DiagramEditor() {
             <span className="ai-note">La grabación de audio no está disponible en este navegador.</span>
           )}
           {audioRecorder.error && <span className="ai-error">{audioRecorder.error}</span>}
-          <button type="submit" disabled={!diagramId || isAnalyzing}>
-            {isAutoAnalyzing ? 'Actualizando análisis...' : isAnalyzing ? 'Analizando...' : 'Analizar diagrama'}
+          <button type="submit" className="primary-button" disabled={!diagramId || isAnalyzing}>
+            {isAnalyzing && <LoaderCircle className="spinner" size={16} aria-hidden="true" />}{isAutoAnalyzing ? 'Actualizando análisis...' : isAnalyzing ? 'Analizando...' : 'Analizar diagrama'}
           </button>
         </form>
 
@@ -1011,7 +1008,7 @@ function DiagramEditor() {
         {aiResult && (
           <div className="ai-result">
             <p>{aiResult.message}</p>
-            <small>Proveedor: {aiResult.provider}</small>
+            <small className="ai-provider">Respuesta de {aiResult.provider === 'ollama' ? 'modelo local (Ollama)' : aiResult.provider}</small>
             {!isViewer && aiResult.suggestions.some((suggestion) => suggestion.clientStatus === 'ready'
               && APPLICABLE_SUGGESTION_TYPES.has(suggestion.type)) && (
               <div className="ai-batch-actions">
@@ -1108,7 +1105,7 @@ function DiagramEditor() {
       {sequenceOpen && (
         <div className="export-backdrop" role="presentation" onMouseDown={() => setSequenceOpen(false)}>
           <section className="export-dialog sequence-dialog" role="dialog" aria-modal="true" aria-labelledby="sequence-title" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="modal-heading"><div><p className="eyebrow">Artefacto derivado</p><h2 id="sequence-title">Generar diagrama de secuencia</h2><p className="muted">Describe el flujo que deseas representar.</p></div><button type="button" className="icon-button" aria-label="Cerrar" onClick={() => setSequenceOpen(false)}><X size={18} /></button></div>
+            <div className="modal-heading"><div><h2 id="sequence-title">Diagrama de secuencia</h2><p className="muted">Describe un escenario y se genera a partir de las clases de este diagrama.</p></div><button type="button" className="icon-button" aria-label="Cerrar" onClick={() => setSequenceOpen(false)}><X size={18} /></button></div>
             {!isViewer && !selectedSequence && (
               <form className="form" onSubmit={handleGenerateSequence}>
                 <label>Nombre<input value={sequenceName} maxLength={120} onChange={(event) => setSequenceName(event.target.value)} required /></label>
@@ -1147,12 +1144,11 @@ function DiagramEditor() {
         <div className="export-backdrop" role="presentation" onMouseDown={() => setExportOpen(false)}>
           <section className="export-dialog" role="dialog" aria-modal="true" aria-labelledby="export-title"
             onMouseDown={(event) => event.stopPropagation()}>
-            <h2 id="export-title">Exportar diagrama</h2>
+            <div className="modal-heading"><div><h2 id="export-title">Exportar diagrama</h2><p className="muted">Elige un formato para ver la vista previa y descargarlo.</p></div><button type="button" className="icon-button" aria-label="Cerrar" onClick={() => setExportOpen(false)}><X size={18} /></button></div>
             <div className="export-tabs">
-              <button type="button" onClick={() => loadExportPreview('json')}>JSON</button>
-              <button type="button" onClick={() => loadExportPreview('plantuml')}>PlantUML</button>
-              <button type="button" onClick={() => loadExportPreview('sql')}>SQL PostgreSQL</button>
-              <button type="button" onClick={() => loadExportPreview('xmi')}>Enterprise Architect (XMI 2.1)</button>
+              {[['json', 'JSON'], ['plantuml', 'PlantUML'], ['sql', 'SQL PostgreSQL'], ['xmi', 'Enterprise Architect (XMI)']].map(([format, label]) => (
+                <button type="button" key={format} className={exportFormat === format ? 'active' : ''} aria-pressed={exportFormat === format} onClick={() => loadExportPreview(format)}>{label}</button>
+              ))}
             </div>
             {isExporting && <p>Generando exportacion...</p>}
             {exportError && <p className="ai-error">{exportError}</p>}
@@ -1172,7 +1168,7 @@ function DiagramEditor() {
               {!['json', 'xmi'].includes(exportFormat) && exportPreview && (
                 <button type="button" onClick={() => navigator.clipboard.writeText(exportPreview.content)}>Copiar</button>
               )}
-              <button type="button" disabled={isExporting} onClick={downloadExport}>
+              <button type="button" className="primary-button" disabled={isExporting} onClick={downloadExport}>
                 Descargar {exportFormat === 'plantuml' ? '.puml' : `.${exportFormat}`}
               </button>
               <button type="button" className="ai-discard" onClick={() => setExportOpen(false)}>Cerrar</button>
@@ -1184,7 +1180,7 @@ function DiagramEditor() {
         <div className="export-backdrop" role="presentation" onMouseDown={() => setImportOpen(false)}>
           <form className="export-dialog import-dialog" onSubmit={handleXmiImport}
             onMouseDown={(event) => event.stopPropagation()}>
-            <h2>Importar Enterprise Architect / XMI</h2>
+            <div className="modal-heading"><div><h2>Importar desde Enterprise Architect</h2><p className="muted">Sube un archivo XMI exportado desde Enterprise Architect.</p></div><button type="button" className="icon-button" aria-label="Cerrar" onClick={() => setImportOpen(false)}><X size={18} /></button></div>
             <input type="file" accept=".xmi,.xml,application/xml,text/xml"
               onChange={(event) => setImportFile(event.target.files?.[0])} />
             <label><input type="radio" name="importMode" value="NEW" checked={importMode === 'NEW'}
@@ -1194,7 +1190,7 @@ function DiagramEditor() {
             {importMode === 'REPLACE' && <p className="ai-warning"><strong>El modelo actual sera reemplazado.</strong></p>}
             {importError && <p className="ai-error">{importError}</p>}
             <div className="export-actions">
-              <button type="submit" disabled={!importFile || isImporting}>{isImporting ? 'Importando...' : 'Importar XMI'}</button>
+              <button type="submit" className="primary-button" disabled={!importFile || isImporting}>{isImporting ? 'Importando...' : 'Importar XMI'}</button>
               <button type="button" className="ai-discard" onClick={() => setImportOpen(false)}>Cancelar</button>
             </div>
           </form>
@@ -1204,16 +1200,15 @@ function DiagramEditor() {
         <div className="export-backdrop" role="presentation" onMouseDown={() => setCodegenOpen(false)}>
           <section className="export-dialog" role="dialog" aria-modal="true" aria-labelledby="codegen-title"
             onMouseDown={(event) => event.stopPropagation()}>
-            <h2 id="codegen-title">Generar proyecto</h2>
-            <p><strong>Spring Boot · Java 21</strong></p>
-            {codegenValidation && <p>Entidades: {codegenValidation.entities} · Relaciones: {codegenValidation.relationships}</p>}
+            <div className="modal-heading"><div><h2 id="codegen-title">Generar código</h2><p className="muted">Backend Spring Boot (Java 21) y cliente móvil Flutter a partir de este diagrama.</p></div><button type="button" className="icon-button" aria-label="Cerrar" onClick={() => setCodegenOpen(false)}><X size={18} /></button></div>
+            {codegenValidation && <dl className="codegen-stats"><div><dt>Entidades</dt><dd>{codegenValidation.entities}</dd></div><div><dt>Relaciones</dt><dd>{codegenValidation.relationships}</dd></div><div><dt>Estado</dt><dd className={codegenValidation.valid ? 'ok' : 'bad'}>{codegenValidation.valid ? 'Listo para generar' : 'Hay errores'}</dd></div></dl>}
             {codegenValidation?.errors?.length > 0 && <div className="ai-error"><strong>Errores</strong><ul>{codegenValidation.errors.map((item) => <li key={item}>{item}</li>)}</ul></div>}
             {codegenValidation?.warnings?.length > 0 && <div className="export-warnings"><strong>Advertencias</strong><ul>{codegenValidation.warnings.map((item) => <li key={item}>{item}</li>)}</ul></div>}
             {codegenError && <p className="ai-error">{codegenError}</p>}
             {isCodegenBusy && <p>Procesando...</p>}
             <div className="export-actions">
-              <button type="button" disabled={isCodegenBusy} onClick={validateCodegen}>Validar</button>
-              <button type="button" disabled={isCodegenBusy || !codegenValidation?.valid} onClick={downloadBackend}>Descargar proyecto</button>
+              <button type="button" className="secondary-button" disabled={isCodegenBusy} onClick={validateCodegen}>Validar diagrama</button>
+              <button type="button" className="primary-button" disabled={isCodegenBusy || !codegenValidation?.valid} onClick={downloadBackend}><Download size={16} aria-hidden="true" /> Descargar proyecto</button>
               <button type="button" className="ai-discard" onClick={() => setCodegenOpen(false)}>Cerrar</button>
             </div>
           </section>

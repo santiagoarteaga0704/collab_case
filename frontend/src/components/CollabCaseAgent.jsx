@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { Bot, CheckCircle2, LoaderCircle, Send, X } from 'lucide-react'
+import { CheckCircle2, LoaderCircle, Send, X } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import { chatWithAgent, getAgentStatus } from '../api/agentApi'
 import { apiErrorMessage } from '../api/errorMessage'
@@ -52,11 +52,11 @@ export default function CollabCaseAgent() {
     : 'Todos los proyectos'
 
   return <>
-    <button className="agent-fab" type="button" onClick={() => setOpen(true)}><Bot size={19}/> Agente</button>
+    
     {open && <aside className="agent-drawer" aria-label="Agente de ayuda">
-      <header><div><span className="eyebrow">Agente Collab CASE</span><h2>¿En qué puedo ayudarte?</h2><span className={`agent-provider ${status?.available ? 'available' : ''}`}>● {status?.available ? (status.provider === 'ollama' ? 'Local' : 'Online') : 'No disponible'}</span></div><button className="icon-button" onClick={() => setOpen(false)} aria-label="Cerrar agente"><X size={18}/></button></header>
+      <header><div><h2>Agente de ayuda</h2><span className={`agent-provider ${status?.available ? 'available' : ''}`}><span className="status-dot" aria-hidden="true"/>{!status ? 'Comprobando…' : status.available ? (status.provider === 'ollama' ? 'Modelo local conectado' : 'Modelo en la nube conectado') : 'Sin modelo disponible'}</span></div><button className="icon-button" onClick={() => setOpen(false)} aria-label="Cerrar agente"><X size={18}/></button></header>
       <div className="agent-context"><small>Contexto actual</small><strong>{contextLabel}</strong></div>
-      {!messages.length && <div className="agent-welcome"><p>Puedes preguntarme...</p><div className="agent-quick">{QUICK.map((item) => <button key={item} onClick={() => send(item)}>{item}</button>)}</div></div>}
+      {!messages.length && <div className="agent-welcome"><p>Te explico cómo usar Collab CASE o hago acciones por ti. Por ejemplo:</p><div className="agent-quick">{QUICK.map((item) => <button key={item} onClick={() => send(item)}>{item}</button>)}</div></div>}
       <div className="agent-history" ref={historyRef}>{messages.map((item, index) => <article className={`agent-message ${item.role.toLowerCase()}`} key={`${index}-${item.text}`}><small>{item.role === 'USER' ? 'Tú' : 'Agente'}</small><p>{item.text}</p>{item.actions?.map((action) => { const result = item.executed?.[action.name]; return <div className="agent-action" key={action.name}><div><strong>{action.name.replaceAll('_', ' ')}</strong>{result?.data?.name && <small>{result.data.name}</small>}</div>{result ? <CheckCircle2 className={result.success ? 'success-icon' : 'error'} size={18}/> : <button disabled={busy} onClick={() => execute(action, index, item.sourceMessage)}>{action.confirmationRequired ? 'Confirmar' : 'Ejecutar'}</button>}</div>})}{item.result?.options?.length > 0 && <div className="agent-options">{item.result.options.map((option) => <button key={option.id} onClick={() => navigate(`/projects/${option.id}`)}>{option.name}</button>)}</div>}</article>)}{busy && <p className="agent-thinking"><LoaderCircle className="spinner" size={16}/> Pensando...</p>}</div>
       {error && <p className="agent-panel-error">{error}</p>}
       <form onSubmit={(event) => { event.preventDefault(); send() }}><textarea value={message} onChange={(event) => setMessage(event.target.value)} placeholder="Escribe tu pregunta..."/><button disabled={busy || !message.trim()} aria-label="Enviar"><Send size={17}/></button></form>
