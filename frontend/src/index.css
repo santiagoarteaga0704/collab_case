@@ -1,0 +1,15 @@
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: auto;
+  background: #f4f6f8;
+}
+
+* { box-sizing: border-box; }
+button, input, textarea, select { font: inherit; }

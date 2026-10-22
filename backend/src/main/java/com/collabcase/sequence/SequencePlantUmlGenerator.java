@@ -1,0 +1,8 @@
+package com.collabcase.sequence;
+import java.io.ByteArrayOutputStream;import java.nio.charset.StandardCharsets;import java.util.Comparator;import org.springframework.stereotype.Component;
+import com.collabcase.sequence.dto.SequenceDefinition;import com.collabcase.sequence.dto.SequenceDefinition.MessageKind;import com.collabcase.sequence.dto.SequenceDefinition.ParticipantType;import net.sourceforge.plantuml.*;
+@Component public class SequencePlantUmlGenerator{
+ public String generate(String title,SequenceDefinition definition){StringBuilder out=new StringBuilder("@startuml\ntitle ").append(text(title)).append("\n\n");for(var p:definition.participants())out.append(p.type()==ParticipantType.ACTOR?"actor ":"participant ").append('\"').append(quoted(p.name())).append('\"').append(" as ").append(alias(p.id())).append('\n');out.append('\n');definition.messages().stream().sorted(Comparator.comparingInt(SequenceDefinition.Message::order)).forEach(m->out.append(alias(m.from())).append(m.kind()==MessageKind.RETURN?" --> ":" -> ").append(alias(m.to())).append(": ").append(text(m.label())).append('\n'));return out.append("\n@enduml\n").toString();}
+ public String renderSvg(String source){try(ByteArrayOutputStream out=new ByteArrayOutputStream()){new SourceStringReader(source).generateImage(out,new FileFormatOption(FileFormat.SVG));return out.toString(StandardCharsets.UTF_8);}catch(Exception e){throw new IllegalStateException("No se pudo renderizar el SVG localmente",e);}}
+ private String alias(String value){return "p_"+value.replaceAll("[^A-Za-z0-9_]","_");}private String text(String value){return(value==null?"":value).replace("\r"," ").replace("\n"," ");}private String quoted(String value){return text(value).replace("\\","\\\\").replace("\"","\\\"");}
+}

@@ -1,0 +1,22 @@
+package com.collabcase.project.version;
+
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
+import java.util.*;
+import org.junit.jupiter.api.Test;
+import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.test.util.ReflectionTestUtils;
+import org.springframework.web.server.ResponseStatusException;
+import com.collabcase.diagram.*;
+import com.collabcase.project.*;
+import com.collabcase.project.ProjectAccessService.*;
+import com.collabcase.project.version.dto.*;
+import com.collabcase.sequence.*;
+import com.collabcase.user.User;
+import tools.jackson.databind.json.JsonMapper;
+
+class ProjectVersionServiceTests {
+ @Test void cloningCreatesIndependentDiagramAndSequenceIds(){var versions=mock(ProjectVersionRepository.class);var diagrams=mock(DiagramRepository.class);var sequences=mock(GeneratedSequenceDiagramRepository.class);var access=mock(ProjectAccessService.class);Project project=new Project();User user=new User();UUID projectId=UUID.randomUUID(),sourceId=UUID.randomUUID();ReflectionTestUtils.setField(project,"id",projectId);ReflectionTestUtils.setField(user,"id",UUID.randomUUID());ProjectVersion source=new ProjectVersion();ReflectionTestUtils.setField(source,"id",sourceId);source.setProject(project);source.setName("main");Diagram original=new Diagram();ReflectionTestUtils.setField(original,"id",UUID.randomUUID());original.setProject(project);original.setVersion(source);original.setName("Modelo");original.setType("ClassDiagram");original.setModel(new LinkedHashMap<>(Map.of("nodes",new ArrayList<>(List.of(Map.of("id","old"))),"edges",List.of())));GeneratedSequenceDiagram sequence=new GeneratedSequenceDiagram();ReflectionTestUtils.setField(sequence,"id",UUID.randomUUID());sequence.setSourceDiagram(original);sequence.setName("Reserva");sequence.setScenario("flujo");sequence.setPlantUml("@startuml\n@enduml");sequence.setSequenceJson("{}");when(access.requireDiagramEditor(projectId,user.getId())).thenReturn(new Access(project,EffectiveRole.EDITOR));when(versions.findById(sourceId)).thenReturn(Optional.of(source));when(versions.existsByProjectIdAndNameIgnoreCase(any(),any())).thenReturn(false);when(versions.saveAndFlush(any())).thenAnswer(i->{ProjectVersion value=i.getArgument(0);if(value.getId()==null)ReflectionTestUtils.setField(value,"id",UUID.randomUUID());return value;});when(diagrams.findByVersionId(sourceId)).thenReturn(List.of(original));when(diagrams.saveAndFlush(any())).thenAnswer(i->{Diagram value=i.getArgument(0);ReflectionTestUtils.setField(value,"id",UUID.randomUUID());return value;});when(sequences.findBySourceDiagramIdOrderByUpdatedAtDesc(original.getId())).thenReturn(List.of(sequence));var service=new ProjectVersionService(versions,diagrams,sequences,access,JsonMapper.builder().build(),mock(ApplicationEventPublisher.class));service.create(projectId,new ProjectVersionRequest("v2","experimento",sourceId),user);var diagramCaptor=org.mockito.ArgumentCaptor.forClass(Diagram.class);verify(diagrams).saveAndFlush(diagramCaptor.capture());Diagram copy=diagramCaptor.getValue();assertThat(copy.getId()).isNotEqualTo(original.getId());assertThat(copy.getModel()).isEqualTo(original.getModel()).isNotSameAs(original.getModel());var sequenceCaptor=org.mockito.ArgumentCaptor.forClass(GeneratedSequenceDiagram.class);verify(sequences).save(sequenceCaptor.capture());assertThat(sequenceCaptor.getValue().getSourceDiagram()).isSameAs(copy);assertThat(sequenceCaptor.getValue().getId()).isNull();}
+ @Test void mainCannotBeDeleted(){var versions=mock(ProjectVersionRepository.class);var access=mock(ProjectAccessService.class);UUID projectId=UUID.randomUUID(),versionId=UUID.randomUUID(),userId=UUID.randomUUID();ProjectVersion main=new ProjectVersion();main.setMainVersion(true);Project project=new Project();ReflectionTestUtils.setField(project,"id",projectId);main.setProject(project);when(access.requireOwner(projectId,userId)).thenReturn(new Access(project,EffectiveRole.OWNER));when(versions.findById(versionId)).thenReturn(Optional.of(main));var service=new ProjectVersionService(versions,mock(DiagramRepository.class),mock(GeneratedSequenceDiagramRepository.class),access,JsonMapper.builder().build(),mock(ApplicationEventPublisher.class));assertThatThrownBy(()->service.delete(projectId,versionId,userId)).isInstanceOf(ResponseStatusException.class);}
+}

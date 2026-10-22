@@ -1,0 +1,2 @@
+package com.collabcase.agent;import java.util.Map;import org.springframework.http.*;import org.springframework.web.bind.annotation.*;
+@RestControllerAdvice(assignableTypes=CollabCaseAgentController.class)public class AgentExceptionHandler{@ExceptionHandler(AgentUnavailableException.class)ResponseEntity<Map<String,String>> unavailable(AgentUnavailableException e){return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of("message",e.getMessage()));}}
