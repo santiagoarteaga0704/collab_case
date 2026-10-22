@@ -28,6 +28,9 @@ public class RuntimeAppService {
     @Transactional(readOnly=true) public Detail detail(UUID appId,UUID userId){RuntimeApp app=find(appId);access.requireRead(app.getSourceProjectId(),userId);return detail(app);}
     @Transactional public void disable(UUID appId,UUID userId){RuntimeApp app=find(appId);access.requireOwner(app.getSourceProjectId(),userId);app.setActive(false);apps.save(app);}
     @Transactional(readOnly=true) public RuntimeApp authenticate(UUID appId,String token){RuntimeApp app=find(appId);if(!app.isActive()||!tokens.matches(token,app.getTokenHash()))throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid runtime application token");return app;}
+    // Writes lock the app row until commit, so syncVersion values are committed in order and a
+    // client cursor never jumps past a change that was still uncommitted when it read.
+    @Transactional public RuntimeApp authenticateForWrite(UUID appId,String token){RuntimeApp app=apps.findLockedById(appId).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Runtime application not found"));if(!app.isActive()||!tokens.matches(token,app.getTokenHash()))throw new ResponseStatusException(HttpStatus.UNAUTHORIZED,"Invalid runtime application token");return app;}
     private RuntimeApp find(UUID id){return apps.findById(id).orElseThrow(()->new ResponseStatusException(HttpStatus.NOT_FOUND,"Runtime application not found"));}
     private Detail detail(RuntimeApp a){return new Detail(a.getId(),a.getSourceDiagramId(),a.getSourceProjectId(),a.getName(),a.getSchemaVersion(),a.isActive(),a.getCreatedAt(),a.getUpdatedAt(),a.getDefinition());}
 }

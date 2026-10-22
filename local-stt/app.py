@@ -38,8 +38,10 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Collab CASE local STT", lifespan=lifespan)
 
 
+# Plain "def": FastAPI runs it in its thread pool. As "async def", the CPU-bound Whisper call
+# blocked the event loop and the service could only answer one request at a time.
 @app.post("/transcribe")
-async def transcribe(file: UploadFile = File(...)):
+def transcribe(file: UploadFile = File(...)):
     if not file.content_type or not file.content_type.startswith("audio/"):
         raise HTTPException(status_code=415, detail="El archivo debe ser audio.")
 
@@ -49,7 +51,7 @@ async def transcribe(file: UploadFile = File(...)):
     try:
         with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as temporary:
             temp_path = temporary.name
-            while chunk := await file.read(1024 * 1024):
+            while chunk := file.file.read(1024 * 1024):
                 total += len(chunk)
                 if total > MAX_AUDIO_BYTES:
                     raise HTTPException(status_code=413, detail="El audio supera el limite de 10 MB.")
@@ -68,6 +70,6 @@ async def transcribe(file: UploadFile = File(...)):
             raise HTTPException(status_code=422, detail="No se detecto voz en la grabacion.")
         return {"text": text}
     finally:
-        await file.close()
+        file.file.close()
         if temp_path:
             Path(temp_path).unlink(missing_ok=True)

@@ -35,6 +35,7 @@ import tools.jackson.databind.ObjectMapper;
 public class CollaborationWebSocketHandler extends TextWebSocketHandler {
     private static final int MAX_MESSAGE_SIZE_BYTES = 1_048_576;
     private static final long HEARTBEAT_TIMEOUT_MS = 60_000;
+    private static final long ROLE_CACHE_MS = 5_000;
     private static final CloseStatus AUTH_FAILED = new CloseStatus(4001, "Authentication failed");
     private static final CloseStatus ACCESS_REVOKED = new CloseStatus(4004, "Access revoked");
 
@@ -47,6 +48,7 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
         final Map<Long, Long> awarenessClients = AwarenessProtocol.newClientMap();
         volatile EffectiveRole role;
         volatile long lastPongAt = System.currentTimeMillis();
+        volatile long roleCheckedAt = System.currentTimeMillis();
 
         ClientSession(UUID diagramId, UUID projectId, User user, EffectiveRole role, WebSocketSession socket) {
             this.diagramId = diagramId;
@@ -128,7 +130,7 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
         if (!envelope.path("data").isTextual()) return;
         String data = envelope.path("data").asText();
         int frameType = AwarenessProtocol.frameType(data);
-        EffectiveRole currentRole = refreshRole(client);
+        EffectiveRole currentRole = cachedRole(client);
         if (currentRole == null) return;
         // VIEWER may request sync (0/2) and publish Awareness (3), but never a document update (1).
         if (currentRole == EffectiveRole.VIEWER && frameType == 1) return;
@@ -167,10 +169,19 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
         }
     }
 
+    // Yjs traffic (every edit and cursor move) reuses a recently checked role instead of querying
+    // the database per message. Role changes and revocations are still pushed immediately by
+    // notifyRoleChanged/notifyAccessRevoked; this only bounds how stale a missed change can be.
+    private EffectiveRole cachedRole(ClientSession client) throws IOException {
+        if (System.currentTimeMillis() - client.roleCheckedAt < ROLE_CACHE_MS) return client.role;
+        return refreshRole(client);
+    }
+
     private EffectiveRole refreshRole(ClientSession client) throws IOException {
         try {
             EffectiveRole role = diagramService.requireCollaborationReadAccess(client.diagramId, client.userId).role();
             client.role = role;
+            client.roleCheckedAt = System.currentTimeMillis();
             return role;
         } catch (ResponseStatusException exception) {
             revoke(client);

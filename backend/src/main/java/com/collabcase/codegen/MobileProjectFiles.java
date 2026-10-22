@@ -17,6 +17,8 @@ final class MobileProjectFiles {
         put(files, javaRoot + "mobile/ProcessedMobileMutation.java", processedMutation(model));
         put(files, javaRoot + "mobile/ProcessedMobileMutationRepository.java", processedMutationRepository(model));
         put(files, javaRoot + "mobile/MobileDtos.java", dtos(model));
+        put(files, javaRoot + "mobile/MobileSyncLock.java", syncLock(model));
+        put(files, javaRoot + "mobile/MobileSyncLockRepository.java", syncLockRepository(model));
         put(files, javaRoot + "mobile/MobileChangeLogService.java", changeLogService(model));
         put(files, javaRoot + "mobile/MobileEntitySyncAdapter.java", adapterInterface(model));
         for (GenerationEntity entity : model.entities()) {
@@ -36,7 +38,7 @@ final class MobileProjectFiles {
               @Column(nullable=false) private UUID syncId;
               @Column(nullable=false) private Long recordVersion;
               @Column(nullable=false) private String operation;
-              @Lob private String payload;
+              @Column(columnDefinition="text") private String payload;
               @Column(nullable=false,updatable=false) private Instant createdAt;
               protected MobileChangeLog(){}
               public MobileChangeLog(String entityType,UUID syncId,Long recordVersion,String operation,String payload){this.entityType=entityType;this.syncId=syncId;this.recordVersion=recordVersion;this.operation=operation;this.payload=payload;this.createdAt=Instant.now();}
@@ -80,16 +82,38 @@ final class MobileProjectFiles {
             }
             """.formatted(m.packageName()); }
 
+    // Single-row lock taken at the start of every write transaction. Change-log ids are
+    // allocated and committed in order, so a client cursor never skips a change that was
+    // still uncommitted when it read (the gap problem of IDENTITY ids under concurrency).
+    private String syncLock(GenerationModel m) { return """
+            package %s.mobile;
+            import jakarta.persistence.*;
+            @Entity @Table(name="mobile_sync_lock") public class MobileSyncLock{
+              @Id private Long id;
+              protected MobileSyncLock(){}public MobileSyncLock(Long id){this.id=id;}
+            }
+            """.formatted(m.packageName()); }
+
+    private String syncLockRepository(GenerationModel m) { return """
+            package %s.mobile;
+            import java.util.Optional;import jakarta.persistence.LockModeType;import org.springframework.data.jpa.repository.*;
+            public interface MobileSyncLockRepository extends JpaRepository<MobileSyncLock,Long>{
+              @Lock(LockModeType.PESSIMISTIC_WRITE) @Query("select l from MobileSyncLock l where l.id = 1") Optional<MobileSyncLock> lockRow();
+            }
+            """.formatted(m.packageName()); }
+
     private String changeLogService(GenerationModel m) { return """
             package %s.mobile;
-            import java.util.*;import org.springframework.stereotype.Service;import tools.jackson.databind.*;import static %s.mobile.MobileDtos.*;
+            import java.util.*;import org.springframework.boot.context.event.ApplicationReadyEvent;import org.springframework.context.event.EventListener;import org.springframework.stereotype.Service;import org.springframework.transaction.annotation.Transactional;import tools.jackson.databind.*;import static %s.mobile.MobileDtos.*;
             @Service public class MobileChangeLogService{
-              private final MobileChangeLogRepository repository;private final ObjectMapper json;
-              public MobileChangeLogService(MobileChangeLogRepository repository,ObjectMapper json){this.repository=repository;this.json=json;}
+              private final MobileChangeLogRepository repository;private final MobileSyncLockRepository locks;private final ObjectMapper json;
+              public MobileChangeLogService(MobileChangeLogRepository repository,MobileSyncLockRepository locks,ObjectMapper json){this.repository=repository;this.locks=locks;this.json=json;}
+              @EventListener(ApplicationReadyEvent.class) public void createLockRow(){if(!locks.existsById(1L))locks.saveAndFlush(new MobileSyncLock(1L));}
+              public void beginWrite(){if(locks.lockRow().isEmpty()){locks.saveAndFlush(new MobileSyncLock(1L));locks.lockRow();}}
               public void upsert(String type,UUID syncId,Long version,Object payload){save(type,syncId,version,"UPSERT",payload);}
               public void delete(String type,UUID syncId,Long version){save(type,syncId,version,"DELETE",null);}
               private void save(String type,UUID syncId,Long version,String operation,Object payload){try{repository.save(new MobileChangeLog(type,syncId,version,operation,payload==null?null:json.writeValueAsString(payload)));}catch(Exception e){throw new IllegalStateException("No se pudo registrar el cambio móvil",e);}}
-              public ChangesResponse after(long cursor){var values=repository.findByIdGreaterThanOrderByIdAsc(cursor).stream().map(this::change).toList();long next=values.isEmpty()?cursor:values.getLast().changeId();return new ChangesResponse(values,next);}
+              @Transactional(readOnly=true) public ChangesResponse after(long cursor){var values=repository.findByIdGreaterThanOrderByIdAsc(cursor).stream().map(this::change).toList();long next=values.isEmpty()?cursor:values.getLast().changeId();return new ChangesResponse(values,next);}
               private Change change(MobileChangeLog value){try{return new Change(value.getId(),value.getEntityType(),value.getSyncId(),value.getRecordVersion(),value.getOperation(),value.getPayload()==null?null:json.readTree(value.getPayload()));}catch(Exception e){throw new IllegalStateException(e);}}
             }
             """.formatted(m.packageName(), m.packageName()); }
@@ -143,12 +167,17 @@ final class MobileProjectFiles {
 
     private String syncService(GenerationModel m) { return """
             package %s.mobile;
-            import java.util.*;import org.springframework.stereotype.Service;import org.springframework.transaction.annotation.Transactional;import static %s.mobile.MobileDtos.*;
+            import java.util.*;import org.springframework.stereotype.Service;import org.springframework.transaction.PlatformTransactionManager;import org.springframework.transaction.TransactionDefinition;import org.springframework.transaction.support.TransactionTemplate;import static %s.mobile.MobileDtos.*;
+            // Each mutation runs in its own transaction: a database error in one mutation (for example a
+            // foreign key violation when deleting a parent) becomes a conflict for that mutation only,
+            // instead of rolling back the whole batch and blocking the offline queue forever.
             @Service public class MobileSyncService{
-              private final MobileEntitySyncRegistry registry;private final ProcessedMobileMutationRepository processed;private final MobileChangeLogService changes;
-              public MobileSyncService(MobileEntitySyncRegistry registry,ProcessedMobileMutationRepository processed,MobileChangeLogService changes){this.registry=registry;this.processed=processed;this.changes=changes;}
-              @Transactional public SyncResponse sync(SyncRequest request){List<Accepted> accepted=new ArrayList<>();List<Conflict> conflicts=new ArrayList<>();List<Mutation> mutations=new ArrayList<>(request.mutations()==null?List.of():request.mutations());mutations.sort(Comparator.comparingInt(x->registry.require(x.entityType()).priority()));for(var mutation:mutations)process(mutation,accepted,conflicts);var remote=changes.after(request.lastChangeId());return new SyncResponse(accepted,conflicts,remote.changes(),remote.nextCursor());}
-              private void process(Mutation m,List<Accepted> accepted,List<Conflict> conflicts){if(processed.existsById(m.mutationId())){registry.require(m.entityType()).find(m.syncId()).ifPresent(r->accepted.add(new Accepted(m.mutationId(),m.entityType(),m.syncId(),r.version())));return;}var adapter=registry.require(m.entityType());try{SyncRecord result;if("DELETE".equals(m.operation())){result=adapter.delete(m.syncId(),m.baseVersion());changes.delete(m.entityType(),m.syncId(),result.version());}else if(m.baseVersion()==0&&!adapter.find(m.syncId()).isPresent()){result=adapter.create(m.syncId(),m.data());changes.upsert(m.entityType(),m.syncId(),result.version(),result.data());}else{result=adapter.update(m.syncId(),m.baseVersion(),m.data());changes.upsert(m.entityType(),m.syncId(),result.version(),result.data());}processed.save(new ProcessedMobileMutation(m.mutationId()));accepted.add(new Accepted(m.mutationId(),m.entityType(),m.syncId(),result.version()));}catch(Exception ex){var server=adapter.find(m.syncId()).orElse(null);conflicts.add(new Conflict(m.mutationId(),m.entityType(),m.syncId(),server==null?0:server.version(),server==null?null:server.data(),ex.getMessage()));}}
+              private final MobileEntitySyncRegistry registry;private final ProcessedMobileMutationRepository processed;private final MobileChangeLogService changes;private final TransactionTemplate transaction;
+              public MobileSyncService(MobileEntitySyncRegistry registry,ProcessedMobileMutationRepository processed,MobileChangeLogService changes,PlatformTransactionManager transactions){this.registry=registry;this.processed=processed;this.changes=changes;this.transaction=new TransactionTemplate(transactions);this.transaction.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);}
+              public SyncResponse sync(SyncRequest request){List<Accepted> accepted=new ArrayList<>();List<Conflict> conflicts=new ArrayList<>();List<Mutation> mutations=new ArrayList<>(request.mutations()==null?List.of():request.mutations());mutations.sort(Comparator.comparingInt(this::priority));for(var mutation:mutations)process(mutation,accepted,conflicts);var remote=changes.after(request.lastChangeId());return new SyncResponse(accepted,conflicts,remote.changes(),remote.nextCursor());}
+              private int priority(Mutation m){try{return registry.require(m.entityType()).priority();}catch(RuntimeException ex){return Integer.MAX_VALUE;}}
+              private void process(Mutation m,List<Accepted> accepted,List<Conflict> conflicts){MobileEntitySyncAdapter adapter;try{adapter=registry.require(m.entityType());}catch(RuntimeException ex){conflicts.add(new Conflict(m.mutationId(),m.entityType(),m.syncId(),0,null,ex.getMessage()));return;}if(processed.existsById(m.mutationId())){adapter.find(m.syncId()).ifPresent(r->accepted.add(new Accepted(m.mutationId(),m.entityType(),m.syncId(),r.version())));return;}try{SyncRecord result=transaction.execute(status->apply(adapter,m));accepted.add(new Accepted(m.mutationId(),m.entityType(),m.syncId(),result.version()));}catch(Exception ex){var server=adapter.find(m.syncId()).orElse(null);conflicts.add(new Conflict(m.mutationId(),m.entityType(),m.syncId(),server==null?0:server.version(),server==null?null:server.data(),ex.getMessage()));}}
+              private SyncRecord apply(MobileEntitySyncAdapter adapter,Mutation m){changes.beginWrite();SyncRecord result;if("DELETE".equals(m.operation())){result=adapter.delete(m.syncId(),m.baseVersion());changes.delete(m.entityType(),m.syncId(),result.version());}else if(m.baseVersion()==0&&!adapter.find(m.syncId()).isPresent()){result=adapter.create(m.syncId(),m.data());changes.upsert(m.entityType(),m.syncId(),result.version(),result.data());}else{result=adapter.update(m.syncId(),m.baseVersion(),m.data());changes.upsert(m.entityType(),m.syncId(),result.version(),result.data());}processed.save(new ProcessedMobileMutation(m.mutationId()));return result;}
             }
             """.formatted(m.packageName(),m.packageName()); }
 

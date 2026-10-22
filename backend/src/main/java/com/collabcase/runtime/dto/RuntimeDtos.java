@@ -18,5 +18,6 @@ public final class RuntimeDtos {
     public record SyncRequest(String deviceId,long lastSyncVersion,List<SyncMutation> mutations){}
     public record Accepted(UUID mutationId,UUID recordId,long version,long syncVersion,boolean duplicate){}
     public record Conflict(UUID mutationId,UUID recordId,long serverVersion,Map<String,Object> serverData,boolean deleted){}
-    public record SyncResponse(List<Accepted> accepted,List<Conflict> conflicts,List<RecordResponse> changes,long nextCursor){}
+    public record Rejected(UUID mutationId,UUID recordId,String message){}
+    public record SyncResponse(List<Accepted> accepted,List<Conflict> conflicts,List<RecordResponse> changes,long nextCursor,List<Rejected> rejected){}
 }
