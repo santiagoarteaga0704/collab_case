@@ -60,3 +60,11 @@ mobile-template/.idea/
 mobile-template/coverage/
 mobile-template/android/.gradle/
 mobile-template/.flutter-plugins-dependencies
+
+# Salidas de compilacion y pruebas copiadas por error
+backend/bin/
+backend/target_*/
+backend/.._*/
+*-error.txt
+generated-verification/
+backend/stable/
