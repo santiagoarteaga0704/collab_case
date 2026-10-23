@@ -1,5 +1,6 @@
 package com.collabcase.teamai.chat;
 
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 
@@ -12,4 +13,7 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> 
 
     @Query("select m from ChatMessage m where m.projectId=:p and (m.privateOwnerId is null or m.privateOwnerId=:u) order by m.createdAt desc, m.id desc")
     List<ChatMessage> visibleTo(@Param("p") UUID p, @Param("u") UUID u, Pageable page);
+
+    List<ChatMessage> findByKindAndProposalStateAndProposalJsonIsNotNullAndCreatedAtBefore(ChatMessageKind kind,
+            ProposalState state, Instant createdBefore);
 }

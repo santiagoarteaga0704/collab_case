@@ -8,12 +8,18 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -21,11 +27,13 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.server.ResponseStatusException;
@@ -72,7 +80,39 @@ class TeamAssistantTests {
     private final UUID luis = UUID.randomUUID();
     private final UUID ana = UUID.randomUUID();
     private final Map<UUID, ChatMessage> store = new ConcurrentHashMap<>();
-    private final AtomicLong clock = new AtomicLong(1_000);
+    private final AtomicLong sequence = new AtomicLong();
+    private final AtomicInteger failingSaves = new AtomicInteger();
+    private final MutableClock time = new MutableClock(Instant.parse("2026-10-23T12:00:00Z"));
+    private DiagramService diagrams;
+    private ProjectAccessService access;
+
+    /** A clock the tests move by hand. */
+    static final class MutableClock extends Clock {
+        private volatile Instant now;
+
+        MutableClock(Instant now) {
+            this.now = now;
+        }
+
+        void advance(Duration d) {
+            now = now.plus(d);
+        }
+
+        @Override
+        public ZoneId getZone() {
+            return ZoneOffset.UTC;
+        }
+
+        @Override
+        public Clock withZone(ZoneId zone) {
+            return this;
+        }
+
+        @Override
+        public Instant instant() {
+            return now;
+        }
+    }
 
     private AiJobQueue queue;
     private ChatRoom room;
@@ -91,8 +131,9 @@ class TeamAssistantTests {
         ChatMessageRepository repo = mock(ChatMessageRepository.class);
         when(repo.save(any(ChatMessage.class))).thenAnswer(i -> {
             ChatMessage m = i.getArgument(0);
+            if (failingSaves.getAndUpdate(n -> Math.max(0, n - 1)) > 0) throw new IllegalStateException("db");
             if (m.getId() == null) m.setId(UUID.randomUUID());
-            if (m.getCreatedAt() == null) m.setCreatedAt(Instant.ofEpochSecond(clock.incrementAndGet()));
+            if (m.getCreatedAt() == null) m.setCreatedAt(time.instant().plusNanos(sequence.incrementAndGet()));
             store.put(m.getId(), copy(m));
             return copy(m);
         });
@@ -108,11 +149,17 @@ class TeamAssistantTests {
                     .sorted(Comparator.comparing(ChatMessage::getCreatedAt).reversed())
                     .limit(page.getPageSize()).map(TeamAssistantTests::copy).toList();
         });
+        when(repo.findByKindAndProposalStateAndProposalJsonIsNotNullAndCreatedAtBefore(any(), any(), any()))
+                .thenAnswer(i -> store.values().stream()
+                        .filter(m -> m.getKind() == i.getArgument(0) && m.getProposalState() == i.getArgument(1))
+                        .filter(m -> m.getProposalJson() != null)
+                        .filter(m -> m.getCreatedAt().isBefore(i.getArgument(2)))
+                        .map(TeamAssistantTests::copy).toList());
 
         project = new Project();
         project.setId(projectId);
         project.setHelpLevel(HelpLevel.DRAW);
-        ProjectAccessService access = mock(ProjectAccessService.class);
+        access = mock(ProjectAccessService.class);
         roles.put(luis, EffectiveRole.EDITOR);
         roles.put(ana, EffectiveRole.EDITOR);
         when(access.requireRead(eq(projectId), any(UUID.class))).thenAnswer(i -> {
@@ -133,7 +180,7 @@ class TeamAssistantTests {
         });
 
         room = mock(ChatRoom.class);
-        DiagramService diagrams = mock(DiagramService.class);
+        diagrams = mock(DiagramService.class);
         when(diagrams.findModelForAnalysis(eq(diagramId), any(UUID.class))).thenReturn(Map.of(
                 "id", diagramId.toString(), "title", "Ventas", "type", "ClassDiagram",
                 "nodes", List.of(Map.of("id", "c1", "type", "class", "data", Map.of("name", "Cliente"))),
@@ -143,8 +190,12 @@ class TeamAssistantTests {
         when(activity.summaryLines(projectId)).thenReturn(List.of("Ana: Producto (último cambio hace 3 min)"));
         when(activity.editingNow(projectId)).thenReturn(List.of("Ana está editando Producto"));
 
-        assistant = new TeamAssistant(queue, chat, room, access, diagrams, new AiDiagramContextMapper(),
-                new ChangeTranslator(new AiSuggestionValidator()), activity, new TeamPromptBuilder(), json);
+        assistant = assistantWith(new ChangeTranslator(new AiSuggestionValidator()), new TeamPromptBuilder());
+    }
+
+    private TeamAssistant assistantWith(ChangeTranslator translator, TeamPromptBuilder prompts) {
+        return new TeamAssistant(queue, chat, room, access, diagrams, new AiDiagramContextMapper(), translator,
+                activity, prompts, json, time);
     }
 
     private static ChatMessage copy(ChatMessage m) {
@@ -488,5 +539,178 @@ class TeamAssistantTests {
         l.chunk("{\"mensaje\":\"x");
         l.finished(DRAW_REPLY);
         l.failed("boom");
+    }
+
+    // ---- fix round 1 ----
+
+    @Test
+    void nullElementsInChangesAreSkipped() {
+        when(room.toUserInDiagram(any(), any(), any(), anyMap())).thenReturn(true);
+        AiJobListener l = ask(luisInDiagram(), "@IA agrega Venta", false);
+        l.finished("{\"mensaje\":\"Luis, listo\",\"cambios\":{\"clasesNuevas\":[null,{\"nombre\":\"Venta\","
+                + "\"atributos\":[null],\"metodos\":[null]}],\"atributosNuevos\":[null],"
+                + "\"relacionesNuevas\":[null],\"cambiosRelacion\":[null]}}");
+        assertThat(aiMessage().getStatus()).isEqualTo(ChatMessageStatus.COMPLETE);
+        assertThat((List<?>) applyChangesSentInDiagram().get("suggestions")).hasSize(1);
+    }
+
+    @Test
+    void translatorFailureEndsAsFailedNotStuck() {
+        ChangeTranslator broken = mock(ChangeTranslator.class);
+        when(broken.translate(any(), any(), any())).thenThrow(new NullPointerException("boom"));
+        assistant = assistantWith(broken, new TeamPromptBuilder());
+        AiJobListener l = ask(luisInDiagram(), "@IA agrega Venta", false);
+        l.started();
+        l.chunk("{\"mensaje\":\"Luis, agrego");
+        l.finished(DRAW_REPLY);
+        assertThat(aiMessage().getStatus()).isEqualTo(ChatMessageStatus.FAILED);
+        assertThat(aiMessage().getContent()).isEqualTo("Luis, agrego");
+        verify(room, never()).toUserInDiagram(any(), any(), any(), anyMap());
+    }
+
+    @Test
+    void saveFailingOnceOnFinishEndsAsFailed() {
+        AiJobListener l = ask(luisInDiagram(), "@IA hola", false);
+        l.started();
+        l.chunk("{\"mensaje\":\"Hola");
+        failingSaves.set(1);
+        l.finished("{\"mensaje\":\"Hola Luis\",\"cambios\":null}");
+        assertThat(aiMessage().getStatus()).isEqualTo(ChatMessageStatus.FAILED);
+        assertThat(aiMessage().getContent()).isEqualTo("Hola");
+    }
+
+    @Test
+    void saveFailingOnceOnFailureStillEndsAsFailed() {
+        AiJobListener l = ask(luisInDiagram(), "@IA hola", false);
+        l.started();
+        failingSaves.set(1);
+        l.failed("La IA no respondió a tiempo");
+        assertThat(aiMessage().getStatus()).isEqualTo(ChatMessageStatus.FAILED);
+        assertThat(aiMessage().getContent()).isEqualTo("La IA no respondió a tiempo");
+    }
+
+    @Test
+    void unexpectedSubmitErrorEndsAsFailed() {
+        when(queue.submit(any(), any(), any())).thenThrow(new IllegalStateException("queue broke"));
+        assistant.handle(question(luis, "Luis", "@IA hola", false, diagramId), luisInDiagram());
+        assertThat(aiMessage().getStatus()).isEqualTo(ChatMessageStatus.FAILED);
+        assertThat(aiMessage().getContent()).isEqualTo("La IA no pudo responder. Prueba de nuevo");
+    }
+
+    @Test
+    void promptFailureEndsAsFailed() {
+        TeamPromptBuilder broken = mock(TeamPromptBuilder.class);
+        when(broken.build(any())).thenThrow(new IllegalArgumentException("bad"));
+        assistant = assistantWith(new ChangeTranslator(new AiSuggestionValidator()), broken);
+        assistant.handle(question(luis, "Luis", "@IA hola", false, diagramId), luisInDiagram());
+        assertThat(aiMessage().getStatus()).isEqualTo(ChatMessageStatus.FAILED);
+        verify(queue, never()).submit(any(), any(), any());
+    }
+
+    @Test
+    void appliedOnlyAcceptsNamesFromTheProposal() {
+        when(room.toUserInDiagram(any(), any(), any(), anyMap())).thenReturn(true);
+        ChatSession who = luisInDiagram();
+        ask(who, "@IA agrega Venta", false).finished(DRAW_REPLY);
+        assistant.applied(who, aiMessage().getId(), List.of("venta", "Hackeo"),
+                List.of(new Failure("Inventada", "x")));
+        assertThat(notices()).extracting(ChatMessage::getContent)
+                .containsExactly("IA agregó Venta (pedido de Luis)");
+        verify(activity).recordAiChange(projectId, diagramId, luis, "Luis", List.of("Venta"));
+    }
+
+    @Test
+    void appliedIsIgnoredOnceApplied() {
+        when(room.toUserInDiagram(any(), any(), any(), anyMap())).thenReturn(true);
+        ChatSession who = luisInDiagram();
+        ask(who, "@IA agrega Venta", false).finished(DRAW_REPLY);
+        UUID id = aiMessage().getId();
+        assistant.applied(who, id, List.of("Venta"), List.of());
+        assistant.applied(who, id, List.of("Venta", "DetalleVenta"), List.of());
+        assertThat(notices()).hasSize(1);
+        verify(activity, times(1)).recordAiChange(any(), any(), any(), any(), any());
+        assertThat(aiMessage().getProposalState()).isEqualTo(ProposalState.APPLIED);
+    }
+
+    @Test
+    void drawnProposalAcceptsReportsOnlyFromRequester() {
+        when(room.toUserInDiagram(any(), any(), any(), anyMap())).thenReturn(true);
+        ask(luisInDiagram(), "@IA agrega Venta", false).finished(DRAW_REPLY);
+        assistant.applied(session(ana, "Ana", diagramId, EffectiveRole.EDITOR), aiMessage().getId(),
+                List.of("Venta"), List.of());
+        assertThat(notices()).isEmpty();
+        assertThat(sentToSession("error")).hasSize(1);
+        assertThat(aiMessage().getProposalState()).isEqualTo(ProposalState.NONE);
+    }
+
+    @Test
+    void pendingProposalAcceptsReportsOnlyFromWhoItWasSentTo() {
+        project.setHelpLevel(HelpLevel.SUGGEST);
+        ask(luisInDiagram(), "@IA agrega Venta", false).finished(DRAW_REPLY);
+        UUID id = aiMessage().getId();
+        ChatSession anaHere = session(ana, "Ana", diagramId, EffectiveRole.EDITOR);
+
+        assistant.applied(anaHere, id, List.of("Venta"), List.of());
+        assertThat(notices()).isEmpty();
+
+        assistant.applyProposal(anaHere, id);
+        assistant.applied(anaHere, id, List.of("Venta"), List.of());
+        assertThat(notices()).extracting(ChatMessage::getContent)
+                .containsExactly("IA agregó Venta (pedido de Luis)");
+    }
+
+    @Test
+    void messageUpdatedIsPublishedBeforeApplyChanges() {
+        when(room.toUserInDiagram(any(), any(), any(), anyMap())).thenReturn(true);
+        ask(luisInDiagram(), "@IA agrega Venta", false).finished(DRAW_REPLY);
+        InOrder order = inOrder(room);
+        order.verify(room).publish(argThat(m -> m.getKind() == ChatMessageKind.AI
+                && m.getStatus() == ChatMessageStatus.COMPLETE),
+                argThat(p -> "message_updated".equals(p.get("kind"))));
+        order.verify(room).toUserInDiagram(any(), any(), any(), anyMap());
+    }
+
+    @Test
+    void unreportedDrawingBecomesPendingAfterThirtySeconds() {
+        when(room.toUserInDiagram(any(), any(), any(), anyMap())).thenReturn(true);
+        ask(luisInDiagram(), "@IA agrega Venta", false).finished(DRAW_REPLY);
+        UUID id = aiMessage().getId();
+
+        time.advance(Duration.ofSeconds(20));
+        assistant.releaseUnreportedDrawings();
+        assertThat(aiMessage().getProposalState()).isEqualTo(ProposalState.NONE);
+
+        time.advance(Duration.ofSeconds(11));
+        assistant.releaseUnreportedDrawings();
+        assertThat(aiMessage().getProposalState()).isEqualTo(ProposalState.PENDING);
+        assertThat(published("message_updated")).anySatisfy(m -> {
+            MessageResponse r = (MessageResponse) m.get("message");
+            assertThat(r.id()).isEqualTo(id);
+            assertThat(r.proposalState()).isEqualTo("PENDING");
+        });
+
+        // the asker's late report is still accepted
+        assistant.applied(luisInDiagram(), id, List.of("Venta"), List.of());
+        assertThat(aiMessage().getProposalState()).isEqualTo(ProposalState.APPLIED);
+    }
+
+    @Test
+    void sweepAlsoReleasesDrawingsLostByARestart() {
+        ChatMessage old = new ChatMessage();
+        old.setProjectId(projectId);
+        old.setAuthorName("IA");
+        old.setKind(ChatMessageKind.AI);
+        old.setDiagramId(diagramId);
+        old.setContent("Luis, agregué Venta");
+        old.setStatus(ChatMessageStatus.COMPLETE);
+        old.setProposalJson("[]");
+        old.setProposalState(ProposalState.NONE);
+        old.setRequestedById(luis);
+        old.setRequestedByName("Luis");
+        UUID id = chat.save(old).getId();
+
+        time.advance(Duration.ofMinutes(16));
+        assistant.releaseUnreportedDrawings();
+        assertThat(store.get(id).getProposalState()).isEqualTo(ProposalState.PENDING);
     }
 }

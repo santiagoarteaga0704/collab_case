@@ -40,15 +40,18 @@ public class ChangeTranslator {
         List<AiSuggestion> out = new ArrayList<>();
 
         for (var c : changes.clasesNuevas()) {
+            if (c == null) continue;
             String name = cleanName(c.nombre());
             if (name.isEmpty() || existing.contains(key(name))) continue;
             List<AiSuggestedAttribute> attributes = new ArrayList<>();
             for (var a : c.atributos()) {
+                if (a == null) continue;
                 String[] p = split(a.nombre(), a.tipo());
                 if (!p[0].isEmpty()) attributes.add(new AiSuggestedAttribute(p[0], orDefault(p[1], DEFAULT_TYPE)));
             }
             List<AiSuggestedMethod> methods = new ArrayList<>();
             for (var m : c.metodos()) {
+                if (m == null) continue;
                 String methodName = cleanName(m.nombre());
                 int paren = methodName.indexOf('(');
                 if (paren >= 0) methodName = methodName.substring(0, paren).trim();
@@ -62,6 +65,7 @@ public class ChangeTranslator {
         }
 
         for (var a : changes.atributosNuevos()) {
+            if (a == null) continue;
             String clazz = cleanName(a.clase());
             String[] p = split(a.nombre(), a.tipo());
             if (clazz.isEmpty() || p[0].isEmpty()) continue;
@@ -70,6 +74,7 @@ public class ChangeTranslator {
         }
 
         for (var r : changes.relacionesNuevas()) {
+            if (r == null) continue;
             String type = RELATION_TYPES.get(upper(r.tipo()));
             String from = cleanName(r.origen());
             String to = cleanName(r.destino());
@@ -81,6 +86,7 @@ public class ChangeTranslator {
         }
 
         for (var ch : changes.cambiosRelacion()) {
+            if (ch == null) continue;
             String from = cleanName(ch.origen());
             String to = cleanName(ch.destino());
             AiRelationshipContext direct = find(ctx, from, to);

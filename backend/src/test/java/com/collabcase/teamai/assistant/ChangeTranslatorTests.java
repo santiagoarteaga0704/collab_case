@@ -121,4 +121,15 @@ class ChangeTranslatorTests {
         assertThat(result.get(1).sourceCardinality()).isEqualTo("*");
         assertThat(result.get(1).targetCardinality()).isEqualTo("1");
     }
+
+    @Test
+    void skipsNullElements() {
+        var changes = new Changes(java.util.Arrays.asList(null, new NewClass("Venta",
+                java.util.Arrays.asList((Member) null), java.util.Arrays.asList((TeamAiReply.Method) null))),
+                java.util.Arrays.asList((NewAttribute) null), java.util.Arrays.asList((NewRelation) null),
+                java.util.Arrays.asList((RelationChange) null));
+        var result = translator.translate(changes, ctx, "Luis");
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().className()).isEqualTo("Venta");
+    }
 }

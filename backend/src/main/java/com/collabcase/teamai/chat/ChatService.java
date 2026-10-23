@@ -1,5 +1,6 @@
 package com.collabcase.teamai.chat;
 
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -66,6 +67,12 @@ public class ChatService {
 
     public Optional<ChatMessage> find(UUID id) {
         return id == null ? Optional.empty() : messages.findById(id);
+    }
+
+    /** AI messages whose drawing was sent but never reported, created before the given instant. */
+    public List<ChatMessage> unreportedDrawings(Instant createdBefore) {
+        return messages.findByKindAndProposalStateAndProposalJsonIsNotNullAndCreatedAtBefore(ChatMessageKind.AI,
+                ProposalState.NONE, createdBefore);
     }
 
     public ChatMessage postFromPerson(UUID projectId, UUID userId, String content, boolean isPrivate,
