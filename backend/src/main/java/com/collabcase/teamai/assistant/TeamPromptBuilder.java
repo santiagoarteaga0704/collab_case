@@ -20,13 +20,14 @@ import com.collabcase.teamai.chat.HelpLevel;
 
 /**
  * Builds the messages sent to the local model for one team question. The budget is counted in
- * characters (about 4 per token, 3072 input tokens): the diagram and the activity are capped, and
+ * characters (about 4 per token, about 2500 input tokens, leaving room
+ * for the reply in the 4096-token context): the diagram and the activity are capped, and
  * the chat history fills what is left, newest first.
  */
 @Component
 public class TeamPromptBuilder {
 
-    static final int MAX_TOTAL_CHARS = 12_000;
+    static final int MAX_TOTAL_CHARS = 10_000;
     static final int MAX_DIAGRAM_CHARS = 4_000;
     static final int MAX_ACTIVITY_CHARS = 1_500;
     static final int MAX_HISTORY_MESSAGES = 30;
@@ -93,10 +94,10 @@ public class TeamPromptBuilder {
         } else {
             s.append("Si te piden construir o corregir algo del diagrama, completa `propuesta` con lo necesario: ")
                     .append("clases nuevas y una relación por cada conexión pedida, con los nombres exactos de las clases. ")
-                    .append("Una venta o pedido que lleva varios productos necesita su clase de detalle con la cantidad, ")
-                    .append("llamada Detalle más el nombre de la principal. Usa el vocabulario de lo que piden: si ")
-                    .append("piden ventas, las clases nuevas son Venta y DetalleVenta, con tres relaciones: ")
-                    .append("Venta con el cliente, DetalleVenta con Venta y DetalleVenta con el producto. ")
+                    .append("Usa el vocabulario de lo que piden. Si una clase principal lleva varios elementos, ")
+                    .append("agrega su clase de detalle con la cantidad, llamada «Detalle» más el nombre de la clase ")
+                    .append("principal y conectada a la clase principal y a la clase de lo que lleva. ")
+                    .append("Ejemplo: Venta lleva productos, entonces DetalleVenta se une a Venta y a Producto. ")
                     .append("Nunca renombres, borres ni muevas: si te lo piden, explica que lo haga una persona ")
                     .append("y deja `propuesta` vacía. Llena `propuesta` solo si el mensaje pide construir (arma, agrega, crea). ")
                     .append("Si preguntan «qué me falta» o piden opinión, responde solo en `mensaje` y deja todas las ")

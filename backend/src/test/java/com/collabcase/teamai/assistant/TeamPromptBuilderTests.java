@@ -134,4 +134,19 @@ class TeamPromptBuilderTests {
                 List.of(), List.of());
         assertThat(system(builder.build(none))).contains("no tiene un diagrama abierto");
     }
+
+    // ---- final fix wave ----
+
+    @Test
+    void promptBudgetLeavesRoomInTheContext() {
+        assertThat(TeamPromptBuilder.MAX_TOTAL_CHARS).isEqualTo(10_000);
+    }
+
+    @Test
+    void detailClassConventionIsGenericWithSalesOnlyAsAnExample() {
+        String draw = system(builder.build(input(HelpLevel.DRAW, true, false, List.of(), List.of())));
+        assertThat(draw).contains("«Detalle» más el nombre de la clase principal",
+                "conectada a la clase principal y a la clase de lo que lleva", "Ejemplo:")
+                .doesNotContain("si piden ventas", "las clases nuevas son Venta y DetalleVenta");
+    }
 }
