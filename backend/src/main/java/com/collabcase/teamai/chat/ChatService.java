@@ -3,6 +3,7 @@ package com.collabcase.teamai.chat;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
@@ -53,10 +54,18 @@ public class ChatService {
 
     public List<MessageResponse> history(UUID projectId, UUID userId) {
         access.requireRead(projectId, userId);
-        List<ChatMessage> latest = new ArrayList<>(
-                messages.visibleTo(projectId, userId, PageRequest.of(0, HISTORY_LIMIT)));
+        return recentVisibleTo(projectId, userId, HISTORY_LIMIT).stream().map(this::toResponse).toList();
+    }
+
+    /** Latest messages the user can see (public plus their own private ones), oldest first. */
+    public List<ChatMessage> recentVisibleTo(UUID projectId, UUID userId, int limit) {
+        List<ChatMessage> latest = new ArrayList<>(messages.visibleTo(projectId, userId, PageRequest.of(0, limit)));
         Collections.reverse(latest);
-        return latest.stream().map(this::toResponse).toList();
+        return latest;
+    }
+
+    public Optional<ChatMessage> find(UUID id) {
+        return id == null ? Optional.empty() : messages.findById(id);
     }
 
     public ChatMessage postFromPerson(UUID projectId, UUID userId, String content, boolean isPrivate,
