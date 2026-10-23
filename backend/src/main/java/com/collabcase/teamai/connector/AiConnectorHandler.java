@@ -3,12 +3,16 @@ package com.collabcase.teamai.connector;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
+import java.time.Clock;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -28,12 +32,17 @@ public class AiConnectorHandler extends TextWebSocketHandler {
     private static final Logger log = LoggerFactory.getLogger(AiConnectorHandler.class);
     private static final CloseStatus BAD_SECRET = new CloseStatus(4001, "Bad secret");
     private static final int MAX_MESSAGE_SIZE_BYTES = 1_048_576;
+    /** Un conector que no contesta en este tiempo (tres pings) se da por caído. */
+    static final Duration SILENCE_LIMIT = Duration.ofSeconds(60);
 
     private final class SessionLink implements ConnectorLink {
         final WebSocketSession socket;
+        /** Última vez que el conector mandó algo (pong, chunk, done...). */
+        volatile Instant lastHeard;
 
         SessionLink(WebSocketSession raw) {
             this.socket = new ConcurrentWebSocketSessionDecorator(raw, 10_000, MAX_MESSAGE_SIZE_BYTES);
+            this.lastHeard = clock.instant();
         }
 
         @Override
@@ -50,13 +59,21 @@ public class AiConnectorHandler extends TextWebSocketHandler {
     private final ObjectMapper json;
     private final byte[] secret;
     private final ConcurrentHashMap<String, SessionLink> links = new ConcurrentHashMap<>();
+    private final Clock clock;
 
+    @Autowired
     public AiConnectorHandler(AiJobQueue queue, ObjectMapper json,
             @Value("${teamai.connector.secret:}") String secret) {
+        this(queue, json, secret, Clock.systemUTC());
+    }
+
+    AiConnectorHandler(AiJobQueue queue, ObjectMapper json, String secret, Clock clock) {
         this.queue = queue;
         this.json = json;
         this.secret = secret.getBytes(StandardCharsets.UTF_8);
+        this.clock = clock;
     }
+
 
     @Override
     protected void handleTextMessage(WebSocketSession session, TextMessage message) throws Exception {
@@ -81,6 +98,7 @@ public class AiConnectorHandler extends TextWebSocketHandler {
             }
             return;
         }
+        link.lastHeard = clock.instant();
         switch (kind) {
             case "chunk" -> withId(envelope, id -> queue.onChunk(id, envelope.path("text").asText("")));
             case "done" -> withId(envelope, id -> queue.onFinished(id, envelope.path("content").asText("")));
@@ -129,9 +147,27 @@ public class AiConnectorHandler extends TextWebSocketHandler {
         }
     }
 
+    /**
+     * Cada 20 s: un ping a cada conector (el conector se reconecta si pasa 50 s sin uno) y fuera los
+     * que llevan {@link #SILENCE_LIMIT} sin decir nada, que si no recibirían trabajos al vacío.
+     */
     @Scheduled(fixedRate = 20_000)
     void ping() {
-        for (SessionLink link : links.values()) {
+        Instant now = clock.instant();
+        for (Map.Entry<String, SessionLink> entry : links.entrySet()) {
+            SessionLink link = entry.getValue();
+            if (link.lastHeard.plus(SILENCE_LIMIT).isBefore(now)) {
+                if (links.remove(entry.getKey(), link)) {
+                    log.warn("El conector de IA lleva {} s sin responder: se desconecta", SILENCE_LIMIT.toSeconds());
+                    queue.detach(link);
+                    try {
+                        link.socket.close(CloseStatus.SESSION_NOT_RELIABLE);
+                    } catch (IOException | RuntimeException e) {
+                        log.debug("No se pudo cerrar el conector mudo", e);
+                    }
+                }
+                continue;
+            }
             try {
                 link.send(Map.of("kind", "ping"));
             } catch (RuntimeException e) {

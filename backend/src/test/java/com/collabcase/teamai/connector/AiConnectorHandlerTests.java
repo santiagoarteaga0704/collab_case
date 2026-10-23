@@ -104,4 +104,31 @@ class AiConnectorHandlerTests {
         assertThat(status.getValue().getCode()).isEqualTo(4001);
         verify(session, never()).sendMessage(any());
     }
+
+    // ---- final fix wave ----
+
+    @Test
+    void serverPingsMoreOftenThanTheConnectorWatchdog() throws Exception {
+        long rate = AiConnectorHandler.class.getDeclaredMethod("ping")
+                .getAnnotation(org.springframework.scheduling.annotation.Scheduled.class).fixedRate();
+        assertThat(rate).isEqualTo(20_000L).isLessThan(50_000L);
+    }
+
+    @Test
+    void silentConnectorIsDetachedAfterSixtySeconds() throws Exception {
+        AiJobQueueTests.MutableClock clock = new AiJobQueueTests.MutableClock();
+        handler = new AiConnectorHandler(queue, json, "secreto", clock);
+        hello("secreto");
+
+        clock.advance(java.time.Duration.ofSeconds(40));
+        say(session, "{\"kind\":\"pong\"}");
+        clock.advance(java.time.Duration.ofSeconds(40));
+        handler.ping();
+        assertThat(queue.connected()).isTrue();
+
+        clock.advance(java.time.Duration.ofSeconds(21));
+        handler.ping();
+        assertThat(queue.connected()).isFalse();
+        verify(session).close(any(CloseStatus.class));
+    }
 }
