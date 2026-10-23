@@ -6,6 +6,6 @@ frontend/dist
 backend/target
 backend/stable
 backend/.env
-backend/.mvn/wrapper/*.jar.bak
 **/*.onnx
 **/*.zip
+!backend/src/main/resources/codegen/mobile-template.zip
