@@ -89,11 +89,18 @@ public class TeamPromptBuilder {
             s.append("Resume qué hizo cada integrante y qué falta según lo que dijeron en el chat y el diagrama. ")
                     .append("Nombra a cada integrante.\n");
         } else if (in.level() == HelpLevel.EXPLAIN || !in.canDraw()) {
-            s.append("No propongas cambios: `cambios` va vacío. Explica y enseña, la persona hace los cambios.\n");
+            s.append("No propongas cambios: `propuesta` va vacío. Explica y enseña, la persona hace los cambios.\n");
         } else {
-            s.append("Si te piden construir o corregir algo del diagrama, completa `cambios` con lo necesario. ")
+            s.append("Si te piden construir o corregir algo del diagrama, completa `propuesta` con lo necesario: ")
+                    .append("clases nuevas y una relación por cada conexión pedida, con los nombres exactos de las clases. ")
+                    .append("Una venta o pedido que lleva varios productos necesita su clase de detalle con la cantidad, ")
+                    .append("llamada Detalle más el nombre de la principal. Usa el vocabulario de lo que piden: si ")
+                    .append("piden ventas, las clases nuevas son Venta y DetalleVenta, con tres relaciones: ")
+                    .append("Venta con el cliente, DetalleVenta con Venta y DetalleVenta con el producto. ")
                     .append("Nunca renombres, borres ni muevas: si te lo piden, explica que lo haga una persona ")
-                    .append("y deja `cambios` vacío. Si no te piden cambios, deja `cambios` vacío.\n");
+                    .append("y deja `propuesta` vacía. Llena `propuesta` solo si el mensaje pide construir (arma, agrega, crea). ")
+                    .append("Si preguntan «qué me falta» o piden opinión, responde solo en `mensaje` y deja todas las ")
+                    .append("listas de `propuesta` vacías.\n");
         }
 
         List<String> editing = in.editingNow() == null ? List.of() : in.editingNow();
@@ -114,6 +121,11 @@ public class TeamPromptBuilder {
         } else {
             s.append("\nDiagrama que tiene abierto ").append(name).append(":\n").append(describe(in.diagram()));
         }
+        s.append("\nRecuerda: tu `mensaje` empieza con «").append(name).append(",».");
+        if (!in.summary() && in.level() != HelpLevel.EXPLAIN && in.canDraw()) {
+            s.append(" Si no piden construir nada, las listas de `propuesta` van vacías.");
+        }
+        s.append('\n');
         return s.toString();
     }
 

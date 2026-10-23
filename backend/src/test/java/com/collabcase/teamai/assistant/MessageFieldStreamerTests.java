@@ -12,7 +12,7 @@ class MessageFieldStreamerTests {
         assertThat(s.feed("{\"mens")).isEmpty();
         assertThat(s.feed("aje\":\"Ho")).isEqualTo("Ho");
         assertThat(s.feed("la Luis\",")).isEqualTo("la Luis");
-        assertThat(s.feed("\"cambios\":{\"mensaje\":\"x\"}}")).isEmpty();
+        assertThat(s.feed("\"propuesta\":{\"mensaje\":\"x\"}}")).isEmpty();
         assertThat(s.text()).isEqualTo("Hola Luis");
     }
 

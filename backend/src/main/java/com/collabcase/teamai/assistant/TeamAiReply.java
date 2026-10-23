@@ -4,7 +4,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
-public record TeamAiReply(String mensaje, Changes cambios) {
+public record TeamAiReply(String mensaje, Changes propuesta) {
 
     public record Changes(List<NewClass> clasesNuevas, List<NewAttribute> atributosNuevos,
             List<NewRelation> relacionesNuevas, List<RelationChange> cambiosRelacion) {
@@ -39,7 +39,7 @@ public record TeamAiReply(String mensaje, Changes cambios) {
             String multDestino) { }
 
     public TeamAiReply {
-        cambios = cambios == null ? Changes.empty() : cambios;
+        propuesta = propuesta == null ? Changes.empty() : propuesta;
     }
 
     private static final List<String> RELATION_TYPES = List.of(
@@ -63,7 +63,7 @@ public record TeamAiReply(String mensaje, Changes cambios) {
                 "atributosNuevos", array(newAttribute), "relacionesNuevas", array(newRelation),
                 "cambiosRelacion", array(relationChange)),
                 "clasesNuevas", "atributosNuevos", "relacionesNuevas", "cambiosRelacion");
-        return obj(props("mensaje", string, "cambios", changes), "mensaje", "cambios");
+        return obj(props("mensaje", string, "propuesta", changes), "mensaje", "propuesta");
     }
 
     public static Map<String, Object> summarySchema() {

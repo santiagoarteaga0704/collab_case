@@ -69,7 +69,7 @@ import tools.jackson.databind.json.JsonMapper;
 
 class TeamAssistantTests {
 
-    private static final String DRAW_REPLY = "{\"mensaje\":\"Luis, agregué Venta y DetalleVenta\",\"cambios\":{"
+    private static final String DRAW_REPLY = "{\"mensaje\":\"Luis, agregué Venta y DetalleVenta\",\"propuesta\":{"
             + "\"clasesNuevas\":[{\"nombre\":\"Venta\",\"atributos\":[{\"nombre\":\"total\",\"tipo\":\"Double\"}],"
             + "\"metodos\":[]},{\"nombre\":\"DetalleVenta\",\"atributos\":[],\"metodos\":[]}],"
             + "\"atributosNuevos\":[],\"relacionesNuevas\":[],\"cambiosRelacion\":[]}}";
@@ -329,7 +329,7 @@ class TeamAssistantTests {
         verify(room, never()).toUserInDiagram(any(), any(), any(), anyMap());
         assertThat(aiMessage().getProposalJson()).isNull();
         assertThat(aiMessage().getProposalState()).isEqualTo(ProposalState.NONE);
-        assertThat(prompts.getLast().getFirst().get("content")).contains("`cambios` va vacío");
+        assertThat(prompts.getLast().getFirst().get("content")).contains("`propuesta` va vacío");
     }
 
     @Test
@@ -339,7 +339,7 @@ class TeamAssistantTests {
         l.finished(DRAW_REPLY);
         verify(room, never()).toUserInDiagram(any(), any(), any(), anyMap());
         assertThat(aiMessage().getProposalJson()).isNull();
-        assertThat(prompts.getLast().getFirst().get("content")).contains("`cambios` va vacío");
+        assertThat(prompts.getLast().getFirst().get("content")).contains("`propuesta` va vacío");
     }
 
     @Test
@@ -359,7 +359,7 @@ class TeamAssistantTests {
         verify(room, never()).toUserInDiagram(any(), any(), any(), anyMap());
         assertThat(aiMessage().getProposalJson()).isNull();
         assertThat(aiMessage().getContent()).isEqualTo("Luis, agregué Venta y DetalleVenta");
-        assertThat(prompts.getLast().getFirst().get("content")).contains("`cambios` va vacío");
+        assertThat(prompts.getLast().getFirst().get("content")).contains("`propuesta` va vacío");
     }
 
     @Test
@@ -369,7 +369,7 @@ class TeamAssistantTests {
         l.started();
         l.chunk("{\"mensa");
         l.chunk("je\":\"Hola ");
-        l.chunk("Luis\",\"cambios\":{");
+        l.chunk("Luis\",\"propuesta\":{");
 
         UUID id = aiMessage().getId();
         assertThat(published("queue_position")).containsExactly(
@@ -507,7 +507,7 @@ class TeamAssistantTests {
         l.queued(1);
         l.started();
         l.chunk("{\"mensaje\":\"Sí");
-        l.finished("{\"mensaje\":\"Sí, Luis\",\"cambios\":null}");
+        l.finished("{\"mensaje\":\"Sí, Luis\",\"propuesta\":null}");
         verify(room, atLeastOnce()).publish(
                 argThat(m -> m.getId().equals(ai.getId()) && luis.equals(m.getPrivateOwnerId())), anyMap());
         verify(room, never()).publish(argThat(m -> m.getPrivateOwnerId() == null), anyMap());
@@ -547,7 +547,7 @@ class TeamAssistantTests {
     void nullElementsInChangesAreSkipped() {
         when(room.toUserInDiagram(any(), any(), any(), anyMap())).thenReturn(true);
         AiJobListener l = ask(luisInDiagram(), "@IA agrega Venta", false);
-        l.finished("{\"mensaje\":\"Luis, listo\",\"cambios\":{\"clasesNuevas\":[null,{\"nombre\":\"Venta\","
+        l.finished("{\"mensaje\":\"Luis, listo\",\"propuesta\":{\"clasesNuevas\":[null,{\"nombre\":\"Venta\","
                 + "\"atributos\":[null],\"metodos\":[null]}],\"atributosNuevos\":[null],"
                 + "\"relacionesNuevas\":[null],\"cambiosRelacion\":[null]}}");
         assertThat(aiMessage().getStatus()).isEqualTo(ChatMessageStatus.COMPLETE);
@@ -574,7 +574,7 @@ class TeamAssistantTests {
         l.started();
         l.chunk("{\"mensaje\":\"Hola");
         failingSaves.set(1);
-        l.finished("{\"mensaje\":\"Hola Luis\",\"cambios\":null}");
+        l.finished("{\"mensaje\":\"Hola Luis\",\"propuesta\":null}");
         assertThat(aiMessage().getStatus()).isEqualTo(ChatMessageStatus.FAILED);
         assertThat(aiMessage().getContent()).isEqualTo("Hola");
     }

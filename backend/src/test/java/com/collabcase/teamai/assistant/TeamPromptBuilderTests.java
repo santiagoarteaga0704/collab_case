@@ -100,10 +100,10 @@ class TeamPromptBuilderTests {
         String explain = system(builder.build(input(HelpLevel.EXPLAIN, true, false, List.of(), List.of())));
         String viewer = system(builder.build(input(HelpLevel.DRAW, false, false, List.of(), List.of())));
         String draw = system(builder.build(input(HelpLevel.DRAW, true, false, List.of(), List.of())));
-        assertThat(explain).contains("No propongas cambios: `cambios` va vacío");
-        assertThat(viewer).contains("No propongas cambios: `cambios` va vacío");
-        assertThat(draw).doesNotContain("`cambios` va vacío")
-                .contains("completa `cambios`", "Nunca renombres, borres ni muevas");
+        assertThat(explain).contains("No propongas cambios: `propuesta` va vacío");
+        assertThat(viewer).contains("No propongas cambios: `propuesta` va vacío");
+        assertThat(draw).doesNotContain("`propuesta` va vacío")
+                .contains("completa `propuesta`", "Nunca renombres, borres ni muevas");
     }
 
     @Test

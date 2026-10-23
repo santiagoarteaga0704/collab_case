@@ -370,7 +370,7 @@ public class TeamAssistant implements QuestionHandler {
             message.setStatus(ChatMessageStatus.COMPLETE);
             HelpLevel level = summary ? null : drawingLevel();
             List<AiSuggestion> changes = level == null ? List.of()
-                    : translator.translate(reply.cambios(), ctx, asker.userName());
+                    : translator.translate(reply.propuesta(), ctx, asker.userName());
             if (changes.isEmpty()) {
                 message = chat.save(message);
                 publish(message, "message_updated");
