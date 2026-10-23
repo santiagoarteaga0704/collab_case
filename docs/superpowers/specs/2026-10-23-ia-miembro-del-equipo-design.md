@@ -71,7 +71,7 @@ Integrantes (navegador) ──► SERVIDOR en AWS (Collab CASE: backend + fronte
 - **La app se despliega en AWS** (requisito del grupo). El QR de la carátula apunta ahí y
   debe quedar vigente hasta fin de semestre.
 - **La IA corre en la laptop**. Un programa **conector** en la laptop abre un WebSocket
-  hacia el servidor (`/ws/ia-conector`) autenticado con un secreto compartido
+  hacia el servidor (`/ws/ai-connector`) autenticado con un secreto compartido
   (`IA_CONECTOR_SECRETO`, variable de entorno en los dos lados). Va de la laptop al servidor,
   no al revés, para funcionar con cualquier red (casa, universidad, datos del celular) sin
   abrir puertos ni túneles de terceros.
@@ -85,10 +85,12 @@ Integrantes (navegador) ──► SERVIDOR en AWS (Collab CASE: backend + fronte
   que entra a la cola; al vencer, el mensaje queda como "la IA no respondió a tiempo".
   *(Decisión del diseñador.)*
 - **Una sola llamada por pedido, con streaming igual.** Todo pedido a `@IA` usa salida
-  estructurada con el esquema `{ mensaje, cambios[] }`, con `mensaje` primero. El modelo
-  decide si hace falta dibujar (`cambios` vacío = solo conversa). El servidor va leyendo el
+  estructurada con el esquema `{ mensaje, propuesta }`, con `mensaje` primero. El modelo
+  decide si hace falta dibujar (`propuesta` con listas vacías = solo conversa). El servidor va leyendo el
   JSON a medida que llega y reenvía al chat el texto del campo `mensaje` mientras se
-  escribe; los `cambios` se procesan al terminar. Así no hay dos llamadas (los ~38 s medidos
+  escribe; la `propuesta` se procesa al terminar. El campo se llama `propuesta` y no
+  `cambios` porque Ollama ordena alfabéticamente las claves del esquema: con `cambios`, el
+  modelo escribía los cambios antes que el `mensaje` y no había nada que mostrar en vivo. Así no hay dos llamadas (los ~38 s medidos
   para un módulo fueron una sola llamada estructurada) y la respuesta igual aparece en vivo.
   `@IA resumen` es el único comando fijo. *(Decisión del diseñador.)*
 - **Laptop apagada:** el chat muestra "IA desconectada" y los pedidos a la IA se rechazan
