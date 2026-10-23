@@ -205,11 +205,11 @@ public class AiJobQueue {
                 running = null;
                 actions.add(() -> listener.failed(TIMEOUT_REASON));
                 startNext(actions);
+                actions.add(this::fireChange);
             }
         } finally {
             lock.unlock();
         }
-        actions.add(this::fireChange);
         runAll(actions);
     }
 

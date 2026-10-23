@@ -280,4 +280,37 @@ class ChatWebSocketHandlerTests {
         assertThat(a.kinds()).endsWith("ai_status");
         assertThat(a.sent.get(a.sent.size() - 1)).contains("\"connected\":false");
     }
+
+    @Test
+    void questionHandlerExceptionRepliesErrorAndKeepsSocketOpen() throws Exception {
+        Sock a = new Sock("a", projectP);
+        UUID ana = login(a, "Ana", EffectiveRole.EDITOR, projectP, "");
+        stubPost(projectP, "@ia hola", false, ana);
+        Mockito.doThrow(new NullPointerException("boom")).when(questions).handle(any(), any());
+        UUID id = UUID.randomUUID();
+        Mockito.doThrow(new IllegalStateException("x")).when(questions).applyProposal(any(), eq(id));
+
+        handler.handleTextMessage(a.session, new TextMessage("{\"kind\":\"send\",\"content\":\"@ia hola\"}"));
+        handler.handleTextMessage(a.session,
+                new TextMessage("{\"kind\":\"apply_proposal\",\"messageId\":\"" + id + "\"}"));
+
+        assertThat(a.kinds()).endsWith("error", "error");
+        assertThat(a.sent.get(a.sent.size() - 1)).contains("Inténtalo de nuevo");
+        verify(a.session, never()).close(any(CloseStatus.class));
+    }
+
+    @Test
+    void privateSendReachesOnlyOwnersSessions() throws Exception {
+        Sock ana = new Sock("a", projectP);
+        Sock beto = new Sock("b", projectP);
+        UUID anaId = login(ana, "Ana", EffectiveRole.EDITOR, projectP, "");
+        login(beto, "Beto", EffectiveRole.EDITOR, projectP, "");
+        stubPost(projectP, "secreto", true, anaId);
+
+        handler.handleTextMessage(ana.session,
+                new TextMessage("{\"kind\":\"send\",\"content\":\"secreto\",\"private\":true}"));
+
+        assertThat(ana.kinds()).contains("message");
+        assertThat(beto.kinds()).containsExactly("auth_ok", "ai_status");
+    }
 }

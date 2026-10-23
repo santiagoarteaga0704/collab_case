@@ -31,6 +31,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class ChatWebSocketHandler extends TextWebSocketHandler {
 
+    private static final org.slf4j.Logger log = org.slf4j.LoggerFactory.getLogger(ChatWebSocketHandler.class);
     private static final int MAX_MESSAGE_SIZE_BYTES = 65_536;
     private static final int SEND_TIME_LIMIT_MS = 10_000;
     private static final int BUFFER_SIZE_LIMIT_BYTES = 1_048_576;
@@ -97,6 +98,9 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
             error(client, e.getReason() == null ? "No se pudo procesar el mensaje" : e.getReason());
         } catch (IllegalArgumentException e) {
             error(client, "Mensaje inválido");
+        } catch (RuntimeException e) {
+            log.warn("Falló el procesamiento de un mensaje del chat", e);
+            error(client, "Algo salió mal al procesar tu mensaje. Inténtalo de nuevo");
         }
     }
 

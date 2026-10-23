@@ -301,4 +301,19 @@ class AiJobQueueTests {
 
         assertThat(seen).containsExactly("true:0", "true:1", "true:0", "false:0");
     }
+
+    @Test
+    void expireWithNothingExpiredDoesNotFireChange() {
+        queue.attach(link, "m");
+        submit(new Recorder());
+        List<String> seen = new ArrayList<>();
+        queue.onChange(() -> seen.add("x"));
+
+        queue.expire();
+        assertThat(seen).isEmpty();
+
+        clock.advance(Duration.ofSeconds(121));
+        queue.expire();
+        assertThat(seen).hasSize(1);
+    }
 }
