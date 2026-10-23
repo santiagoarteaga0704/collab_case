@@ -214,4 +214,77 @@ class AiJobQueueTests {
 
         assertThat(result.get(5, TimeUnit.SECONDS)).isEqualTo("respuesta");
     }
+
+    @Test
+    void throwingListenerDoesNotStallTheQueue() {
+        queue.attach(link, "m");
+        Recorder r1 = new Recorder() {
+            @Override public void finished(String content) { throw new RuntimeException("boom"); }
+        };
+        Recorder r2 = new Recorder();
+        UUID id1 = submit(r1);
+        UUID id2 = submit(r2);
+
+        queue.onFinished(id1, "x");
+
+        assertThat(link.sent).hasSize(2);
+        assertThat(link.idOf(1)).isEqualTo(id2);
+        assertThat(r2.events).containsExactly("queued(1)", "started");
+    }
+
+    @Test
+    void throwingSendFailsThatJobAndTheNextOneStillRuns() {
+        int[] calls = {0};
+        FakeLink flaky = new FakeLink() {
+            @Override public void send(Map<String, Object> payload) {
+                if (calls[0]++ == 1) {
+                    throw new IllegalStateException("socket cerrado");
+                }
+                super.send(payload);
+            }
+        };
+        queue.attach(flaky, "m");
+        Recorder r1 = new Recorder(), r2 = new Recorder(), r3 = new Recorder();
+        UUID id1 = submit(r1);
+        submit(r2);
+        UUID id3 = submit(r3);
+
+        queue.onFinished(id1, "x");
+
+        assertThat(r2.events).contains("started", "failed(IA desconectada)");
+        assertThat(flaky.sent).hasSize(2);
+        assertThat(flaky.idOf(1)).isEqualTo(id3);
+        assertThat(r3.events).contains("started");
+        assertThat(queue.size()).isEqualTo(1);
+    }
+
+    @Test
+    void throwingSendOnSubmitFailsTheJobWithoutThrowing() {
+        FakeLink broken = new FakeLink() {
+            @Override public void send(Map<String, Object> payload) { throw new IllegalStateException("cerrado"); }
+        };
+        queue.attach(broken, "m");
+        Recorder r1 = new Recorder();
+
+        assertThatCode(() -> submit(r1)).doesNotThrowAnyException();
+
+        assertThat(r1.events).containsExactly("started", "failed(IA desconectada)");
+        assertThat(queue.size()).isZero();
+    }
+
+    @Test
+    void expireStartsTheNextWaitingJob() {
+        queue.attach(link, "m");
+        Recorder r1 = new Recorder(), r2 = new Recorder();
+        submit(r1);
+        UUID id2 = submit(r2);
+
+        clock.advance(Duration.ofSeconds(121));
+        queue.expire();
+
+        assertThat(r1.events).contains("failed(La IA no respondió a tiempo)");
+        assertThat(link.sent).hasSize(2);
+        assertThat(link.idOf(1)).isEqualTo(id2);
+        assertThat(r2.events).containsExactly("queued(1)", "started");
+    }
 }

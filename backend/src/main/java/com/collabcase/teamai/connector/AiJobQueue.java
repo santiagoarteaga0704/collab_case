@@ -16,6 +16,8 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
@@ -27,6 +29,8 @@ import org.springframework.stereotype.Component;
  */
 @Component
 public class AiJobQueue {
+
+    private static final Logger log = LoggerFactory.getLogger(AiJobQueue.class);
 
     static final int MAX_JOBS = 5;
     static final Duration TIMEOUT = Duration.ofSeconds(120);
@@ -75,7 +79,7 @@ public class AiJobQueue {
         } finally {
             lock.unlock();
         }
-        actions.forEach(Runnable::run);
+        runAll(actions);
     }
 
     public void detach(ConnectorLink oldLink) {
@@ -91,7 +95,7 @@ public class AiJobQueue {
         } finally {
             lock.unlock();
         }
-        actions.forEach(Runnable::run);
+        runAll(actions);
     }
 
     public boolean connected() {
@@ -144,7 +148,7 @@ public class AiJobQueue {
         } finally {
             lock.unlock();
         }
-        actions.forEach(Runnable::run);
+        runAll(actions);
         return id;
     }
 
@@ -185,7 +189,7 @@ public class AiJobQueue {
         } finally {
             lock.unlock();
         }
-        actions.forEach(Runnable::run);
+        runAll(actions);
     }
 
     /** Ejecuta un trabajo y espera su resultado completo (sin streaming). */
@@ -227,7 +231,18 @@ public class AiJobQueue {
         } finally {
             lock.unlock();
         }
-        actions.forEach(Runnable::run);
+        runAll(actions);
+    }
+
+    /** Ejecuta cada acción aislada: si una falla, las demás se ejecutan igual. */
+    private static void runAll(List<Runnable> actions) {
+        for (Runnable action : actions) {
+            try {
+                action.run();
+            } catch (RuntimeException e) {
+                log.warn("Falló un callback de la cola de IA", e);
+            }
+        }
     }
 
     /** Debe llamarse con el lock tomado. Arranca el siguiente y renumera a los que esperan. */
@@ -244,7 +259,14 @@ public class AiJobQueue {
             payload.put("format", job.format);
             payload.put("options", Map.of("num_ctx", 4096, "temperature", 0.3));
             actions.add(job.listener::started);
-            actions.add(() -> target.send(payload));
+            actions.add(() -> {
+                try {
+                    target.send(payload);
+                } catch (RuntimeException e) {
+                    log.warn("No se pudo enviar el trabajo {} al conector", job.id, e);
+                    onFailed(job.id, OFFLINE_REASON);
+                }
+            });
             int position = 1;
             for (Job w : waiting) {
                 int p = position++;
