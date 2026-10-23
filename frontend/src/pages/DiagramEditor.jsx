@@ -933,7 +933,7 @@ function DiagramEditor() {
         />
       </div>
 
-      {diagramId && role && <TeamChat variant="drawer" projectId={projectId} diagramId={diagramId} role={role} isOwner={role === 'OWNER'} onApplyChanges={applyTeamChangesToEditor} />}
+      {diagramId && role && <TeamChat key={`${projectId}:${diagramId}`} variant="drawer" projectId={projectId} diagramId={diagramId} role={role} isOwner={role === 'OWNER'} onApplyChanges={applyTeamChangesToEditor} />}
       <aside className="ai-panel" aria-label="Asistente de modelado">
         <header className="ai-panel-header"><Sparkles size={18} aria-hidden="true" /><div><h2>Asistente de modelado</h2><p>Revisa el diagrama y propone cambios que tú confirmas.</p></div></header>
         <section className="vision-import">
