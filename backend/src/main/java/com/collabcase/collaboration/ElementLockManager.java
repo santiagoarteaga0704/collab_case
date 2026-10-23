@@ -94,6 +94,15 @@ public class ElementLockManager {
         return locks.values().stream().filter(lock -> lock.expiresAt().isAfter(now)).toList();
     }
 
+    public java.util.Map<UUID, List<ElementLock>> snapshotAll() {
+        java.util.Map<UUID, List<ElementLock>> all = new java.util.HashMap<>();
+        for (UUID diagramId : locksByDiagram.keySet()) {
+            List<ElementLock> active = snapshot(diagramId);
+            if (!active.isEmpty()) all.put(diagramId, active);
+        }
+        return all;
+    }
+
     @Scheduled(fixedRate = 5_000)
     public void expireLocks() {
         Instant now = Instant.now();

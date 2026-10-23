@@ -66,16 +66,19 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
     private final CollaborationRoomManager rooms;
     private final ElementLockManager locks;
     private final ObjectMapper json;
+    private final org.springframework.context.ApplicationEventPublisher events;
     private final ConcurrentHashMap<String, ClientSession> clients = new ConcurrentHashMap<>();
 
     public CollaborationWebSocketHandler(JwtService jwtService, UserService userService, DiagramService diagramService,
-            CollaborationRoomManager rooms, ElementLockManager locks, ObjectMapper json) {
+            CollaborationRoomManager rooms, ElementLockManager locks, ObjectMapper json,
+            org.springframework.context.ApplicationEventPublisher events) {
         this.jwtService = jwtService;
         this.userService = userService;
         this.diagramService = diagramService;
         this.rooms = rooms;
         this.locks = locks;
         this.json = json;
+        this.events = events;
     }
 
     @Override
@@ -146,6 +149,12 @@ public class CollaborationWebSocketHandler extends TextWebSocketHandler {
                 client.diagramId, elementId, client.userId, client.userName, client.socket.getId());
         ElementLockManager.ElementLock lock = result.lock();
         if (result.granted()) {
+            try {
+                events.publishEvent(new com.collabcase.teamai.activity.ElementLockGrantedEvent(
+                        client.diagramId, client.userId, client.userName, elementId));
+            } catch (RuntimeException ignored) {
+                // Activity logging must never break the lock flow.
+            }
             send(client.socket, Map.of("kind", "lock_granted", "elementId", elementId,
                     "userId", client.userId.toString(), "userName", client.userName));
             rooms.broadcast(client.diagramId, client.socket.getId(), json.writeValueAsString(Map.of(
