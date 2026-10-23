@@ -1,6 +1,7 @@
 package com.collabcase.teamai.chat;
 
 import java.time.Instant;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -16,4 +17,6 @@ public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> 
 
     List<ChatMessage> findByKindAndProposalStateAndProposalJsonIsNotNullAndCreatedAtBefore(ChatMessageKind kind,
             ProposalState state, Instant createdBefore);
+
+    List<ChatMessage> findByStatusIn(Collection<ChatMessageStatus> statuses);
 }

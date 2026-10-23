@@ -75,6 +75,11 @@ public class ChatService {
                 ProposalState.NONE, createdBefore);
     }
 
+    /** Messages still waiting for or receiving an AI answer (QUEUED or WRITING). */
+    public List<ChatMessage> unfinished() {
+        return messages.findByStatusIn(List.of(ChatMessageStatus.QUEUED, ChatMessageStatus.WRITING));
+    }
+
     public ChatMessage postFromPerson(UUID projectId, UUID userId, String content, boolean isPrivate,
             UUID diagramId) {
         access.requireRead(projectId, userId);

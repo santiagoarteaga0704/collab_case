@@ -18,6 +18,8 @@ import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.context.event.ApplicationReadyEvent;
+import org.springframework.context.event.EventListener;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -62,6 +64,7 @@ public class TeamAssistant implements QuestionHandler {
     /** Untracked drawings (lost by a restart) older than this are released too; longer than any job. */
     static final Duration RESTART_GRACE = Duration.ofMinutes(15);
     private static final String AI_NAME = "IA";
+    private static final String LOST_ON_RESTART = "La IA no respondió a tiempo";
     private static final String UNREADABLE = "No pude armar la respuesta. Prueba de nuevo";
     private static final String GENERIC_FAILURE = "La IA no pudo responder. Prueba de nuevo";
     private static final String NOT_FOUND = "No se encontró esa propuesta";
@@ -127,7 +130,8 @@ public class TeamAssistant implements QuestionHandler {
         List<ChatMessage> history = new ArrayList<>();
         for (ChatMessage m : chat.recentVisibleTo(projectId, asker.userId(), HISTORY_FETCH)) {
             boolean visible = m.getPrivateOwnerId() == null || m.getPrivateOwnerId().equals(asker.userId());
-            if (visible && !m.getId().equals(question.getId())) history.add(m);
+            boolean failedAnswer = m.getKind() == ChatMessageKind.AI && m.getStatus() == ChatMessageStatus.FAILED;
+            if (visible && !failedAnswer && !m.getId().equals(question.getId())) history.add(m);
         }
 
         ChatMessage ai = new ChatMessage();
@@ -268,6 +272,27 @@ public class TeamAssistant implements QuestionHandler {
             }
         } catch (RuntimeException e) {
             log.warn("Could not release unreported AI drawings", e);
+        }
+    }
+
+    /**
+     * The job queue lives in memory and a single instance runs: after a restart no answer that was
+     * QUEUED or WRITING will ever finish, so it ends as FAILED instead of spinning forever.
+     */
+    @EventListener(ApplicationReadyEvent.class)
+    public void failAnswersLostOnRestart() {
+        try {
+            for (ChatMessage m : chat.unfinished()) {
+                try {
+                    m.setStatus(ChatMessageStatus.FAILED);
+                    m.setContent(LOST_ON_RESTART);
+                    chat.save(m);
+                } catch (RuntimeException e) {
+                    log.warn("Could not mark AI answer {} as failed after a restart", m.getId(), e);
+                }
+            }
+        } catch (RuntimeException e) {
+            log.warn("Could not sweep AI answers left unfinished by a restart", e);
         }
     }
 

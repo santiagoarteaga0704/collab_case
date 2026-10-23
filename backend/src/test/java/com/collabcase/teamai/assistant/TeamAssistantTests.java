@@ -156,6 +156,12 @@ class TeamAssistantTests {
                         .filter(m -> m.getCreatedAt().isBefore(i.getArgument(2)))
                         .map(TeamAssistantTests::copy).toList());
 
+        when(repo.findByStatusIn(any())).thenAnswer(i -> {
+            java.util.Collection<?> statuses = i.getArgument(0);
+            return store.values().stream().filter(m -> statuses.contains(m.getStatus()))
+                    .map(TeamAssistantTests::copy).toList();
+        });
+
         project = new Project();
         project.setId(projectId);
         project.setHelpLevel(HelpLevel.DRAW);
@@ -712,5 +718,57 @@ class TeamAssistantTests {
         time.advance(Duration.ofMinutes(16));
         assistant.releaseUnreportedDrawings();
         assertThat(store.get(id).getProposalState()).isEqualTo(ProposalState.PENDING);
+    }
+
+    // ---- final fix wave ----
+
+    private ChatMessage storedAi(ChatMessageStatus status, String content) {
+        ChatMessage m = new ChatMessage();
+        m.setProjectId(projectId);
+        m.setAuthorName("IA");
+        m.setKind(ChatMessageKind.AI);
+        m.setDiagramId(diagramId);
+        m.setContent(content);
+        m.setStatus(status);
+        m.setProposalState(ProposalState.NONE);
+        m.setRequestedById(luis);
+        m.setRequestedByName("Luis");
+        return chat.save(m);
+    }
+
+    @Test
+    void startupMarksQueuedAndWritingAnswersAsFailed() {
+        UUID queued = storedAi(ChatMessageStatus.QUEUED, "").getId();
+        UUID writing = storedAi(ChatMessageStatus.WRITING, "Luis, estoy").getId();
+        UUID complete = storedAi(ChatMessageStatus.COMPLETE, "Luis, listo").getId();
+
+        assistant.failAnswersLostOnRestart();
+
+        assertThat(store.get(queued).getStatus()).isEqualTo(ChatMessageStatus.FAILED);
+        assertThat(store.get(queued).getContent()).isEqualTo("La IA no respondió a tiempo");
+        assertThat(store.get(writing).getStatus()).isEqualTo(ChatMessageStatus.FAILED);
+        assertThat(store.get(writing).getContent()).isEqualTo("La IA no respondió a tiempo");
+        assertThat(store.get(complete).getStatus()).isEqualTo(ChatMessageStatus.COMPLETE);
+        assertThat(store.get(complete).getContent()).isEqualTo("Luis, listo");
+    }
+
+    @Test
+    void startupSweepIsBoundToApplicationReady() throws Exception {
+        org.springframework.context.event.EventListener listener = TeamAssistant.class
+                .getMethod("failAnswersLostOnRestart")
+                .getAnnotation(org.springframework.context.event.EventListener.class);
+        assertThat(listener).isNotNull();
+        assertThat(listener.value()).contains(org.springframework.boot.context.event.ApplicationReadyEvent.class);
+    }
+
+    @Test
+    void failedAiAnswersAreLeftOutOfTheHistory() {
+        question(ana, "Ana", "hola equipo", false, diagramId);
+        storedAi(ChatMessageStatus.FAILED, "La IA no respondió a tiempo");
+        storedAi(ChatMessageStatus.COMPLETE, "Ana, hola");
+        ask(luisInDiagram(), "@IA ¿qué opinan?", false);
+
+        String all = prompts.getLast().stream().map(m -> m.get("content")).reduce("", String::concat);
+        assertThat(all).contains("[Ana]: hola equipo", "Ana, hola").doesNotContain("no respondió a tiempo");
     }
 }
