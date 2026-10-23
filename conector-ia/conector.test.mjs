@@ -127,3 +127,72 @@ test('answersPingWithPong', async () => {
   assert.deepEqual(ws().sent.at(-1), { kind: 'pong' });
   await c.stop();
 });
+
+// Ollama falso que se queda colgado hasta que se aborta la señal.
+function hangingFetch(calls) {
+  return (url, init) => new Promise((_, reject) => {
+    calls.push(init);
+    init.signal.addEventListener('abort', () => reject(new DOMException('abort', 'AbortError')));
+  });
+}
+
+test('newJobAbortsRunningJobWithoutErrorForOldId', async () => {
+  const calls = [];
+  let n = 0;
+  const f = (url, init) => (n++ === 0 ? hangingFetch(calls)(url, init)
+    : Promise.resolve(ndjsonResponse([{ message: { content: 'ok' }, done: true }])));
+  const { c, ws } = setup(f);
+  await until(() => ws() && ws().sent.length === 1);
+  ws().receive({ kind: 'job', id: 'old', messages: [], format: null, options: {} });
+  await until(() => calls.length === 1);
+  ws().receive({ kind: 'job', id: 'new', messages: [], format: null, options: {} });
+  await until(() => ws().sent.some((m) => m.kind === 'done'));
+  assert.equal(calls[0].signal.aborted, true);
+  assert.deepEqual(ws().sent.slice(1), [
+    { kind: 'chunk', id: 'new', text: 'ok' }, { kind: 'done', id: 'new', content: 'ok' }]);
+  await c.stop();
+});
+
+test('socketCloseAbortsRunningJobAndSendsNothing', async () => {
+  const calls = [];
+  const { c, ws } = setup(hangingFetch(calls), { backoffBaseMs: 10 });
+  await until(() => ws() && ws().sent.length === 1);
+  const first = ws();
+  first.receive({ kind: 'job', id: 'j', messages: [], format: null, options: {} });
+  await until(() => calls.length === 1);
+  first.close();
+  await until(() => calls[0].signal.aborted);
+  await sleep(30);
+  assert.deepEqual(first.sent.map((m) => m.kind), ['hello']);
+  await c.stop();
+});
+
+test('stopAbortsRunningGenerationAndReturns', async () => {
+  const calls = [];
+  const { c, ws } = setup(hangingFetch(calls));
+  await until(() => ws() && ws().sent.length === 1);
+  ws().receive({ kind: 'job', id: 'j', messages: [], format: null, options: {} });
+  await until(() => calls.length === 1);
+  await c.stop();
+  assert.equal(calls[0].signal.aborted, true);
+});
+
+test('joinsNdjsonLineSplitAcrossStreamChunks', async () => {
+  const enc = new TextEncoder();
+  const line = JSON.stringify({ message: { content: 'Hola' } }) + '\n';
+  const last = JSON.stringify({ message: { content: '' }, done: true }) + '\n';
+  const f = async () => new Response(new ReadableStream({
+    start(ctl) {
+      ctl.enqueue(enc.encode(line.slice(0, 10)));
+      ctl.enqueue(enc.encode(line.slice(10) + last));
+      ctl.close();
+    },
+  }), { status: 200 });
+  const { c, ws } = setup(f);
+  await until(() => ws() && ws().sent.length === 1);
+  ws().receive({ kind: 'job', id: 's', messages: [], format: null, options: {} });
+  await until(() => ws().sent.some((m) => m.kind === 'done'));
+  assert.deepEqual(ws().sent.slice(1), [
+    { kind: 'chunk', id: 's', text: 'Hola' }, { kind: 'done', id: 's', content: 'Hola' }]);
+  await c.stop();
+});

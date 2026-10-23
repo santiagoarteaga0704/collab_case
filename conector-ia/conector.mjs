@@ -11,18 +11,23 @@ export function startConnector({
   let timer = null;
   let attempt = 0;
   let work = Promise.resolve(); // atiende de a un trabajo
+  let current = null; // AbortController del trabajo en curso
+
+  const abortCurrent = () => { current?.abort(); current = null; };
 
   const send = (ws, obj) => {
     try { ws.send(JSON.stringify(obj)); } catch { /* la conexión se cayó; el servidor reintenta */ }
   };
 
-  async function runJob(ws, job) {
+  async function runJob(ws, job, controller) {
     const { id } = job;
+    const { signal } = controller;
+    if (signal.aborted) return;
     try {
       const body = { model, messages: job.messages, stream: true, options: job.options };
       if (job.format != null) body.format = job.format;
       const res = await fetchImpl(`${ollamaUrl}/api/chat`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+        method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
       });
       if (!res.ok) {
         const detail = (await res.text().catch(() => '')).slice(0, 300);
@@ -39,7 +44,7 @@ export function startConnector({
         const text = data.message?.content;
         if (text) {
           full += text;
-          send(ws, { kind: 'chunk', id, text });
+          if (!signal.aborted) send(ws, { kind: 'chunk', id, text });
         }
         if (data.done) finished = true;
       };
@@ -53,8 +58,10 @@ export function startConnector({
       }
       handleLine(pending);
       if (!finished) throw new Error('Ollama cerró la respuesta antes de terminar');
+      if (signal.aborted) return;
       send(ws, { kind: 'done', id, content: full });
     } catch (e) {
+      if (signal.aborted) return; // cancelado: el servidor ya dio por perdido este trabajo
       log(`Falló el trabajo ${id}: ${e.message}`);
       send(ws, { kind: 'error', id, detail: e.message });
     }
@@ -77,13 +84,17 @@ export function startConnector({
       } else if (msg.kind === 'ping') {
         send(ws, { kind: 'pong' });
       } else if (msg.kind === 'job') {
-        work = work.then(() => runJob(ws, msg));
+        abortCurrent(); // el servidor solo manda otro si ya abandonó el anterior
+        const controller = new AbortController();
+        current = controller;
+        work = work.then(() => runJob(ws, msg, controller));
       }
     });
     let handled = false;
     const onGone = (ev) => {
       if (handled) return;
       handled = true;
+      abortCurrent();
       if (stopped) return;
       if (ev?.code === 4001) log('Secreto rechazado por el servidor: revisa IA_CONECTOR_SECRETO');
       const wait = Math.min(backoffBaseMs * 2 ** attempt, backoffMaxMs);
@@ -101,6 +112,7 @@ export function startConnector({
     async stop() {
       stopped = true;
       clearTimeout(timer);
+      abortCurrent();
       try { socket?.close(); } catch { /* ya cerrado */ }
       await work;
     },
