@@ -37,6 +37,12 @@ public class AiJobQueue {
     static final Duration TIMEOUT = Duration.ofSeconds(120);
     static final String OFFLINE_REASON = "IA desconectada";
     static final String TIMEOUT_REASON = "La IA no respondió a tiempo";
+    /**
+     * Lo que espera {@link #runBlocking}: menos que los 60 s de CloudFront, para que el panel de
+     * análisis y el agente reciban un error claro en vez de un 504. El chat del equipo no espera y
+     * mantiene {@link #TIMEOUT}.
+     */
+    static final Duration BLOCKING_WAIT = Duration.ofSeconds(55);
 
     private static final class Job {
         final UUID id = UUID.randomUUID();
@@ -59,6 +65,7 @@ public class AiJobQueue {
     private ConnectorLink link;
     private String model;
     private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
+    private volatile Duration blockingWait = BLOCKING_WAIT;
 
     @Autowired
     public AiJobQueue() {
@@ -67,6 +74,11 @@ public class AiJobQueue {
 
     public AiJobQueue(Clock clock) {
         this.clock = clock;
+    }
+
+    /** Solo para pruebas: cuánto espera {@link #runBlocking}. */
+    void blockingWait(Duration wait) {
+        this.blockingWait = wait;
     }
 
     /** Registra un listener que se avisa cuando cambia el estado (conexión, cola). Se llama fuera del lock. */
@@ -213,10 +225,14 @@ public class AiJobQueue {
         runAll(actions);
     }
 
-    /** Ejecuta un trabajo y espera su resultado completo (sin streaming). */
+    /**
+     * Ejecuta un trabajo y espera su resultado completo (sin streaming), como mucho
+     * {@link #BLOCKING_WAIT}. Si se rinde, el trabajo sale de la cola o, si ya corría, se cancela
+     * en el conector y libera el turno.
+     */
     public String runBlocking(List<Map<String, String>> messages, Map<String, Object> format) {
         CompletableFuture<String> future = new CompletableFuture<>();
-        submit(messages, format, new AiJobListener() {
+        UUID id = submit(messages, format, new AiJobListener() {
             @Override public void queued(int position) { }
             @Override public void started() { }
             @Override public void chunk(String text) { }
@@ -226,16 +242,49 @@ public class AiJobQueue {
             }
         });
         try {
-            return future.get(TIMEOUT.toMillis() * (MAX_JOBS + 1), TimeUnit.MILLISECONDS);
+            return future.get(blockingWait.toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
+            abandon(id);
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Interrumpido mientras se esperaba a la IA", e);
         } catch (ExecutionException e) {
             Throwable cause = e.getCause();
             throw cause instanceof IllegalStateException ise ? ise : new IllegalStateException(cause);
         } catch (TimeoutException e) {
+            abandon(id);
             throw new IllegalStateException(TIMEOUT_REASON, e);
         }
+    }
+
+    /** Quien esperaba ya no quiere el resultado: saca el trabajo de la cola o lo cancela si corre. */
+    private void abandon(UUID jobId) {
+        List<Runnable> actions = new ArrayList<>();
+        lock.lock();
+        try {
+            if (running != null && running.id.equals(jobId)) {
+                running = null;
+                ConnectorLink target = link;
+                if (target != null) {
+                    Map<String, Object> cancel = new LinkedHashMap<>();
+                    cancel.put("kind", "cancel");
+                    cancel.put("id", jobId.toString());
+                    actions.add(() -> target.send(cancel));
+                }
+                startNext(actions);
+            } else if (waiting.removeIf(job -> job.id.equals(jobId))) {
+                int position = 1;
+                for (Job w : waiting) {
+                    int p = position++;
+                    actions.add(() -> w.listener.queued(p));
+                }
+            } else {
+                return;
+            }
+        } finally {
+            lock.unlock();
+        }
+        actions.add(this::fireChange);
+        runAll(actions);
     }
 
     private void complete(UUID jobId, Consumer<AiJobListener> notify) {

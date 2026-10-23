@@ -316,4 +316,60 @@ class AiJobQueueTests {
         queue.expire();
         assertThat(seen).hasSize(1);
     }
+
+    // ---- final fix wave ----
+
+    @Test
+    void blockingCallerWaitsLessThanCloudFrontButChatJobsKeepTheirTimeout() {
+        assertThat(AiJobQueue.BLOCKING_WAIT).isEqualTo(Duration.ofSeconds(55));
+        assertThat(AiJobQueue.TIMEOUT).isEqualTo(Duration.ofSeconds(120));
+    }
+
+    @Test
+    void runBlockingThatGivesUpCancelsItsRunningJobAndFreesTheSlot() throws Exception {
+        queue.blockingWait(Duration.ofMillis(200));
+        queue.attach(link, "m");
+        CompletableFuture<String> result = CompletableFuture.supplyAsync(() -> queue.runBlocking(MSGS, null));
+
+        assertThatThrownBy(() -> result.get(5, TimeUnit.SECONDS))
+                .hasCauseInstanceOf(IllegalStateException.class)
+                .cause().hasMessage("La IA no respondió a tiempo");
+        UUID abandoned = link.idOf(0);
+        assertThat(link.sent).hasSize(2);
+        assertThat(link.sent.get(1)).containsEntry("kind", "cancel").containsEntry("id", abandoned.toString());
+        assertThat(queue.size()).isZero();
+
+        Recorder next = new Recorder();
+        UUID nextId = submit(next);
+        assertThat(next.events).containsExactly("started");
+        assertThat(link.idOf(2)).isEqualTo(nextId);
+        queue.onFinished(abandoned, "tarde"); // a late answer of the abandoned job is ignored
+        assertThat(next.events).containsExactly("started");
+    }
+
+    @Test
+    void runBlockingThatGivesUpWhileWaitingLeavesTheQueue() throws Exception {
+        queue.blockingWait(Duration.ofMillis(200));
+        queue.attach(link, "m");
+        Recorder first = new Recorder();
+        UUID firstId = submit(first);
+        Recorder second = new Recorder();
+        CompletableFuture<String> result = CompletableFuture.supplyAsync(() -> queue.runBlocking(MSGS, null));
+        long deadline = System.currentTimeMillis() + 5000;
+        while (queue.size() < 2 && System.currentTimeMillis() < deadline) {
+            Thread.sleep(5);
+        }
+        submit(second);
+
+        assertThatThrownBy(() -> result.get(5, TimeUnit.SECONDS))
+                .hasCauseInstanceOf(IllegalStateException.class)
+                .cause().hasMessage("La IA no respondió a tiempo");
+        assertThat(queue.size()).isEqualTo(2);
+        assertThat(link.sent).hasSize(1); // nothing cancelled: it never reached the laptop
+        assertThat(second.events).containsExactly("queued(2)", "queued(1)");
+
+        queue.onFinished(firstId, "ok");
+        assertThat(link.sent).hasSize(2);
+        assertThat(second.events).containsExactly("queued(2)", "queued(1)", "started");
+    }
 }
