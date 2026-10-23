@@ -267,9 +267,15 @@ public class TeamAssistant implements QuestionHandler {
                 if (!changes.isEmpty()) {
                     message.setProposalJson(json.writeValueAsString(changes));
                     message.setProposalState(level == HelpLevel.SUGGEST ? ProposalState.PENDING : ProposalState.NONE);
+                    // saved before apply_changes goes out, so the browser's report finds the proposal;
+                    // not saved again after a successful send, so a quick report is never overwritten
                     message = chat.save(message);
-                    if (level == HelpLevel.DRAW && !room.toUserInDiagram(message.getProjectId(), asker.userId(),
-                            message.getDiagramId(), applyChanges(message, changes))) {
+                    if (level == HelpLevel.DRAW) {
+                        if (room.toUserInDiagram(message.getProjectId(), asker.userId(), message.getDiagramId(),
+                                applyChanges(message, changes))) {
+                            publish(message, "message_updated");
+                            return;
+                        }
                         message.setProposalState(ProposalState.PENDING);
                     }
                 }
