@@ -2,10 +2,12 @@ package com.collabcase.teamai.assistant;
 
 import java.text.Normalizer;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import org.springframework.stereotype.Component;
@@ -26,6 +28,7 @@ public class ChangeTranslator {
             "ASOCIACION", "ASSOCIATION", "AGREGACION", "AGGREGATION", "COMPOSICION", "COMPOSITION",
             "HERENCIA", "INHERITANCE", "DEPENDENCIA", "DEPENDENCY", "REALIZACION", "REALIZATION");
     private static final String DEFAULT_TYPE = "String";
+    private static final Pattern CARDINALITY = Pattern.compile("(?:\\d+|\\*)(?:\\.\\.(?:\\d+|\\*))?");
 
     private final AiSuggestionValidator validator;
 
@@ -43,19 +46,24 @@ public class ChangeTranslator {
             if (c == null) continue;
             String name = cleanName(c.nombre());
             if (name.isEmpty() || existing.contains(key(name))) continue;
+            // a repeated member would make the validator drop the whole class: keep the first one
             List<AiSuggestedAttribute> attributes = new ArrayList<>();
+            Set<String> attributeNames = new HashSet<>();
             for (var a : c.atributos()) {
                 if (a == null) continue;
                 String[] p = split(a.nombre(), a.tipo());
-                if (!p[0].isEmpty()) attributes.add(new AiSuggestedAttribute(p[0], orDefault(p[1], DEFAULT_TYPE)));
+                if (!p[0].isEmpty() && attributeNames.add(key(p[0]))) {
+                    attributes.add(new AiSuggestedAttribute(p[0], orDefault(p[1], DEFAULT_TYPE)));
+                }
             }
             List<AiSuggestedMethod> methods = new ArrayList<>();
+            Set<String> methodNames = new HashSet<>();
             for (var m : c.metodos()) {
                 if (m == null) continue;
                 String methodName = cleanName(m.nombre());
                 int paren = methodName.indexOf('(');
                 if (paren >= 0) methodName = methodName.substring(0, paren).trim();
-                if (!methodName.isEmpty()) {
+                if (!methodName.isEmpty() && methodNames.add(key(methodName))) {
                     methods.add(new AiSuggestedMethod(methodName, List.of(), orDefault(trim(m.retorno()), "void")));
                 }
             }
@@ -107,7 +115,10 @@ public class ChangeTranslator {
                         null, null, found.id(), null, null));
             }
         }
-        return validator.validate(out, ctx);
+        // the validator may turn a change into a WARNING or IMPROVEMENT note; those are never applied
+        return validator.validate(out, ctx).stream()
+                .filter(s -> s.type() != SuggestionType.WARNING && s.type() != SuggestionType.IMPROVEMENT)
+                .toList();
     }
 
     private static AiRelationshipContext find(AiDiagramContext ctx, String source, String target) {
@@ -156,6 +167,8 @@ public class ChangeTranslator {
         if (v == null) return null;
         v = v.toLowerCase(Locale.ROOT);
         if (v.equals("n") || v.equals("muchos") || v.equals("*")) return "*";
-        return v.replaceAll("\\.\\.(n|\\*)$", "..*");
+        v = v.replaceAll("\\.\\.(n|\\*)$", "..*");
+        // same pattern the validator accepts for a cardinality; anything else is left empty
+        return CARDINALITY.matcher(v).matches() ? v : null;
     }
 }

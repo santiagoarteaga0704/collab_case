@@ -132,4 +132,62 @@ class ChangeTranslatorTests {
         assertThat(result).hasSize(1);
         assertThat(result.getFirst().className()).isEqualTo("Venta");
     }
+
+    // ---- final fix wave ----
+
+    @Test
+    void attributeThatExistsWithAnotherTypeIsNotProposed() {
+        // the validator turns this into an IMPROVEMENT note; a proposal only carries real changes
+        var changes = new Changes(null, List.of(new NewAttribute("Cliente", "nombre", "Integer")), null, null);
+        var result = translator.translate(changes, ctx, "Luis");
+        assertThat(result).isEmpty();
+    }
+
+    @Test
+    void proposalNeverCarriesWarningsOrImprovements() {
+        var changes = new Changes(List.of(new NewClass("Venta", null, null)),
+                List.of(new NewAttribute("Cliente", "nombre", "Integer")), null, null);
+        var result = translator.translate(changes, ctx, "Luis");
+        assertThat(result).extracting(AiSuggestion::type).containsExactly(SuggestionType.ADD_CLASS);
+    }
+
+    @Test
+    void repeatedMembersOfANewClassAreMergedAndTheClassIsKept() {
+        var changes = new Changes(List.of(new NewClass("Venta",
+                List.of(new Member("total", "Double"), new Member("+ Total", "Double"), new Member("fecha", "Date")),
+                List.of(new TeamAiReply.Method("calcular()", "Double"), new TeamAiReply.Method("calcular(x)", "void")))),
+                null, List.of(new NewRelation("Venta", "Cliente", "ASOCIACION", "", "")), null);
+        var result = translator.translate(changes, ctx, "Luis");
+        var clazz = result.stream().filter(s -> s.type() == SuggestionType.ADD_CLASS).toList();
+        assertThat(clazz).hasSize(1);
+        assertThat(clazz.getFirst().attributes()).extracting(a -> a.name()).containsExactly("total", "fecha");
+        assertThat(clazz.getFirst().methods()).extracting(m -> m.name()).containsExactly("calcular");
+        assertThat(clazz.getFirst().methods().getFirst().returnType()).isEqualTo("Double");
+        assertThat(result.stream().filter(s -> s.type() == SuggestionType.ADD_RELATIONSHIP)).hasSize(1);
+    }
+
+    @Test
+    void unknownMultiplicitiesAreDroppedButTheRelationIsKept() {
+        var changes = new Changes(List.of(new NewClass("Venta", null, null)), null, List.of(
+                new NewRelation("Venta", "Cliente", "ASOCIACION", "uno", "1..N"),
+                new NewRelation("Venta", "Producto", "ASOCIACION", "0..1", "varios")), null);
+        var result = translator.translate(changes, ctx, "Luis");
+        var relations = result.stream().filter(s -> s.type() == SuggestionType.ADD_RELATIONSHIP).toList();
+        assertThat(relations).hasSize(2);
+        assertThat(relations.get(0).sourceCardinality()).isNull();
+        assertThat(relations.get(0).targetCardinality()).isEqualTo("1..*");
+        assertThat(relations.get(1).sourceCardinality()).isEqualTo("0..1");
+        assertThat(relations.get(1).targetCardinality()).isNull();
+    }
+
+    @Test
+    void cardinalityChangeKeepsTheValidSideWhenTheOtherIsUnknown() {
+        var changes = new Changes(null, null, null, List.of(
+                new RelationChange("Cliente", "Producto", "", "muchos?", "0..1")));
+        var result = translator.translate(changes, ctx, "Luis");
+        assertThat(result).hasSize(1);
+        assertThat(result.getFirst().type()).isEqualTo(SuggestionType.CHANGE_CARDINALITY);
+        assertThat(result.getFirst().sourceCardinality()).isNull();
+        assertThat(result.getFirst().targetCardinality()).isEqualTo("0..1");
+    }
 }
