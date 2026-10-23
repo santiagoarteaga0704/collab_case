@@ -16,10 +16,30 @@ function upsert(messages, message) {
   return next
 }
 
+// createdAt is an ISO instant that may carry micro/nanoseconds; Date.parse would drop them.
+function timeOf(value) {
+  if (typeof value === 'number') return [value, 0]
+  if (typeof value !== 'string') return [Infinity, 0]
+  const fraction = value.match(/\.(\d+)/)
+  const millis = Date.parse(value.replace(/\.\d+/, ''))
+  if (Number.isNaN(millis)) return [Infinity, 0]
+  return [millis, fraction ? Number(fraction[1].padEnd(9, '0').slice(0, 9)) : 0]
+}
+
+function byTimeThenId(a, b) {
+  const [ma, na] = timeOf(a.createdAt)
+  const [mb, nb] = timeOf(b.createdAt)
+  if (ma !== mb) return ma < mb ? -1 : 1
+  if (na !== nb) return na - nb
+  if (ma === Infinity) return 0
+  return String(a.id).localeCompare(String(b.id))
+}
+
 export function chatReducer(state, event) {
   switch (event?.kind) {
     case 'history':
-      return { ...state, messages: (event.messages ?? []).reduce(upsert, []) }
+      // merge, never replace: live messages that came first and older ones stay; the list is re-sorted
+      return { ...state, messages: (event.messages ?? []).reduce(upsert, state.messages.slice()).sort(byTimeThenId) }
     case 'message':
     case 'message_updated': {
       if (!event.message) return state
@@ -44,6 +64,15 @@ export function chatReducer(state, event) {
     default:
       return state
   }
+}
+
+// Aplicar stays disabled after a click until the server sends a new version of that message.
+export function markApplying(applying, message) {
+  return { ...applying, [message.id]: message }
+}
+
+export function isApplying(applying, message) {
+  return Boolean(message) && applying[message.id] === message
 }
 
 // These texts are the ones the server stores as the content of a failed answer.

@@ -2,7 +2,7 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import { Bot, Lock, MessageSquare, Send, X } from 'lucide-react'
 import { getChatHistory, getChatStatus, setHelpLevel } from '../api/chatApi'
 import { useAuth } from '../context/AuthContext'
-import { aiStatusLabel, chatReducer, initialChatState } from '../services/chatState'
+import { aiStatusLabel, chatReducer, initialChatState, isApplying, markApplying } from '../services/chatState'
 import { createChatSocket } from '../services/chatSocket'
 import './TeamChat.css'
 
@@ -28,6 +28,7 @@ function TeamChat({ projectId, diagramId, role, isOwner = false, onApplyChanges,
   const [open, setOpen] = useState(variant === 'column')
   const [error, setError] = useState('')
   const [connected, setConnected] = useState(false)
+  const [applying, setApplying] = useState({})
   const socketRef = useRef()
   const listRef = useRef()
   const applyRef = useRef(onApplyChanges)
@@ -38,7 +39,7 @@ function TeamChat({ projectId, diagramId, role, isOwner = false, onApplyChanges,
     let socket
     async function start() {
       try {
-        // History first: the reducer's `history` case replaces the list, so it must precede live events.
+        // The reducer's `history` case merges by id, so live events that arrive first are kept.
         const [history, status] = await Promise.all([getChatHistory(projectId), getChatStatus(projectId)])
         if (!active) return
         dispatch({ kind: 'history', messages: history.data })
@@ -52,10 +53,24 @@ function TeamChat({ projectId, diagramId, role, isOwner = false, onApplyChanges,
         projectId,
         diagramId,
         token: localStorage.getItem('collab-case-token'),
+        onDisconnect: () => { if (active) setConnected(false) },
+        onReconnect: async () => {
+          // catch up with what was published while the socket was down
+          try {
+            const history = await getChatHistory(projectId)
+            if (active) dispatch({ kind: 'history', messages: history.data })
+          } catch {
+            if (active) setError('No se pudieron recuperar los mensajes nuevos del chat.')
+          }
+        },
         onEvent: async (event) => {
           if (event.kind === 'auth_ok') { setConnected(true); setError(''); return }
           if (event.kind === 'auth_error') { setConnected(false); setError('No se pudo conectar al chat.'); return }
-          if (event.kind === 'error') { setError(event.message || 'No se pudo enviar el mensaje.'); return }
+          if (event.kind === 'error') {
+            setApplying({})
+            setError(event.message || 'No se pudo enviar el mensaje.')
+            return
+          }
           if (event.kind === 'apply_changes') {
             if (!applyRef.current) return
             let result
@@ -142,7 +157,8 @@ function TeamChat({ projectId, diagramId, role, isOwner = false, onApplyChanges,
                   <span>{m.proposalState === 'APPLIED' ? 'La IA agregó:' : 'La IA propone agregar:'}</span>
                   <ul>{names.map((n, i) => <li key={`${n}-${i}`}>{n}</li>)}</ul>
                   {m.proposalState === 'PENDING' && canApply && (
-                    <button type="button" className="primary-button" onClick={() => socketRef.current?.applyProposal(m.id)}>Aplicar</button>
+                    <button type="button" className="primary-button" disabled={isApplying(applying, m)}
+                      onClick={() => { if (socketRef.current?.applyProposal(m.id)) setApplying((a) => markApplying(a, m)) }}>Aplicar</button>
                   )}
                   {m.proposalState === 'NONE' && <small className="team-chat-state">Aplicando…</small>}
                   {m.proposalState === 'APPLIED' && <small className="team-chat-state">Aplicado</small>}

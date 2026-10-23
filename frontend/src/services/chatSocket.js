@@ -3,18 +3,21 @@ const DEFAULT_WS_BASE_URL =
 const INITIAL_RECONNECT_DELAY_MS = 1000
 const MAX_RECONNECT_DELAY_MS = 10000
 
-export function createChatSocket({ projectId, diagramId, token, onEvent }) {
+// onDisconnect: the socket went down (it will retry). onReconnect: authenticated again after a drop,
+// so whatever was published meanwhile must be fetched again.
+export function createChatSocket({ projectId, diagramId, token, onEvent, onDisconnect, onReconnect }) {
   let socket
   let reconnectTimer
   let reconnectDelay = INITIAL_RECONNECT_DELAY_MS
   let stopped = false
   let terminalClose = false
   let authenticated = false
+  let everAuthenticated = false
 
   function connect() {
     if (stopped || terminalClose ||
         socket?.readyState === WebSocket.CONNECTING || socket?.readyState === WebSocket.OPEN) return
-    const baseUrl = import.meta.env.VITE_WS_BASE_URL || DEFAULT_WS_BASE_URL
+    const baseUrl = import.meta.env?.VITE_WS_BASE_URL || DEFAULT_WS_BASE_URL
     const connection = new WebSocket(`${baseUrl}/ws/chat/${projectId}`)
     socket = connection
 
@@ -32,8 +35,10 @@ export function createChatSocket({ projectId, diagramId, token, onEvent }) {
       if (stopped) return
       let message
       try { message = JSON.parse(event.data) } catch { return }
+      const reconnected = message.kind === 'auth_ok' && everAuthenticated
       if (message.kind === 'auth_ok') {
         authenticated = true
+        everAuthenticated = true
         reconnectDelay = INITIAL_RECONNECT_DELAY_MS
       } else if (message.kind === 'auth_error') {
         terminalClose = true
@@ -41,11 +46,13 @@ export function createChatSocket({ projectId, diagramId, token, onEvent }) {
         connection.close()
       }
       onEvent?.(message)
+      if (reconnected) onReconnect?.()
     })
 
     connection.addEventListener('close', (event) => {
       authenticated = false
       if (socket === connection) socket = undefined
+      if (!stopped) onDisconnect?.()
       if ([4001, 4003, 4004].includes(event.code)) terminalClose = true
       if (!stopped && !terminalClose) {
         reconnectTimer = window.setTimeout(connect, reconnectDelay)
