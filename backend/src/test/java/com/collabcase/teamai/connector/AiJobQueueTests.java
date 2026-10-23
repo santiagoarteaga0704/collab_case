@@ -287,4 +287,18 @@ class AiJobQueueTests {
         assertThat(link.idOf(1)).isEqualTo(id2);
         assertThat(r2.events).containsExactly("queued(1)", "started");
     }
+
+    @Test
+    void onChangeFiresOnAttachSubmitFinishAndDetachAndIsolatesFailures() {
+        List<String> seen = new ArrayList<>();
+        queue.onChange(() -> { throw new IllegalStateException("boom"); });
+        queue.onChange(() -> seen.add(queue.connected() + ":" + queue.size()));
+
+        queue.attach(link, "m");
+        UUID id = submit(new Recorder());
+        queue.onFinished(id, "ok");
+        queue.detach(link);
+
+        assertThat(seen).containsExactly("true:0", "true:1", "true:0", "false:0");
+    }
 }

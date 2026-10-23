@@ -9,6 +9,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
@@ -57,6 +58,7 @@ public class AiJobQueue {
     private Job running;
     private ConnectorLink link;
     private String model;
+    private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
 
     @Autowired
     public AiJobQueue() {
@@ -65,6 +67,21 @@ public class AiJobQueue {
 
     public AiJobQueue(Clock clock) {
         this.clock = clock;
+    }
+
+    /** Registra un listener que se avisa cuando cambia el estado (conexión, cola). Se llama fuera del lock. */
+    public void onChange(Runnable listener) {
+        changeListeners.add(listener);
+    }
+
+    private void fireChange() {
+        for (Runnable l : changeListeners) {
+            try {
+                l.run();
+            } catch (RuntimeException e) {
+                log.warn("Falló un listener de cambios de la cola de IA", e);
+            }
+        }
     }
 
     public void attach(ConnectorLink newLink, String newModel) {
@@ -79,6 +96,7 @@ public class AiJobQueue {
         } finally {
             lock.unlock();
         }
+        actions.add(this::fireChange);
         runAll(actions);
     }
 
@@ -95,6 +113,7 @@ public class AiJobQueue {
         } finally {
             lock.unlock();
         }
+        actions.add(this::fireChange);
         runAll(actions);
     }
 
@@ -148,6 +167,7 @@ public class AiJobQueue {
         } finally {
             lock.unlock();
         }
+        actions.add(this::fireChange);
         runAll(actions);
         return id;
     }
@@ -189,6 +209,7 @@ public class AiJobQueue {
         } finally {
             lock.unlock();
         }
+        actions.add(this::fireChange);
         runAll(actions);
     }
 
@@ -231,6 +252,7 @@ public class AiJobQueue {
         } finally {
             lock.unlock();
         }
+        actions.add(this::fireChange);
         runAll(actions);
     }
 

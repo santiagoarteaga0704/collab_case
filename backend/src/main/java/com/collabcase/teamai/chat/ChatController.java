@@ -27,8 +27,10 @@ public class ChatController {
     private final ChatService chat;
     private final ProjectAccessService access;
     private final AiJobQueue queue;
+    private final ChatRoom room;
 
-    public ChatController(ChatService chat, ProjectAccessService access, AiJobQueue queue) {
+    public ChatController(ChatService chat, ProjectAccessService access, AiJobQueue queue, ChatRoom room) {
+        this.room = room;
         this.chat = chat;
         this.access = access;
         this.queue = queue;
@@ -49,6 +51,7 @@ public class ChatController {
     public StatusResponse setHelpLevel(@PathVariable UUID projectId, @Valid @RequestBody HelpLevelRequest request,
             @AuthenticationPrincipal User user) {
         HelpLevel level = chat.setHelpLevel(projectId, user.getId(), request.level());
+        room.toAll(projectId, java.util.Map.of("kind", "help_level", "level", level.name()));
         return new StatusResponse(queue.connected(), queue.size(), level.name());
     }
 }
