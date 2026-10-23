@@ -6,6 +6,7 @@ import { deleteDiagram, renameDiagram } from '../api/diagramApi'
 import { createVersion, deleteVersion, getVersionDiagrams, getVersions, renameVersion } from '../api/versionApi'
 import { apiErrorMessage } from '../api/errorMessage'
 import Toast from '../components/Toast'
+import TeamChat from '../components/TeamChat'
 import { useAgentRuntimeContext } from '../context/AgentRuntimeContext'
 import { fullDate, initials, timeAgo } from '../utils/format'
 
@@ -73,6 +74,7 @@ function ProjectDetail() {
     <div className="section-heading"><h2>Diagramas <span className="count">{diagrams.length}</span></h2></div>
     {!diagrams.length && <div className="empty-state"><h2>Esta versión no tiene diagramas</h2><p>Crea un diagrama de clases y comparte el enlace con tu equipo para editarlo juntos.</p>{canEdit && <Link className="button-link primary-button" to={newDiagramUrl}><Plus size={16}/> Nuevo diagrama</Link>}</div>}
     {!!diagrams.length && <section className="diagram-table" aria-label="Diagramas"><div className="diagram-table-head"><span>Nombre</span><span>Tipo</span><span>Última edición</span><span><span className="sr-only">Acciones</span></span></div>{diagrams.map((diagram) => <article className="diagram-row" key={diagram.id}><div className="diagram-name"><Network size={16} aria-hidden="true"/><Link to={editorUrl(diagram.id)}>{diagram.name}</Link></div><span>Diagrama de clases</span><time dateTime={diagram.updatedAt} title={fullDate(diagram.updatedAt)}>{timeAgo(diagram.updatedAt)}</time><div className="diagram-card-actions"><Link className="text-button" to={editorUrl(diagram.id)}>Abrir</Link>{canEdit && <details className="action-menu"><summary aria-label={`Acciones de ${diagram.name}`}><MoreHorizontal size={18}/></summary><div><button onClick={() => { setTarget({ type: 'diagram', id: diagram.id }); setRenameName(diagram.name); setModal('rename') }}><Pencil size={15}/> Renombrar</button><button className="danger-action" onClick={() => { setTarget({ type: 'diagram', id: diagram.id, name: diagram.name }); setModal('delete-diagram') }}><Trash2 size={15}/> Eliminar</button></div></details>}</div></article>)}</section>}
+    <section className="chat-section"><TeamChat projectId={projectId} role={project.role} isOwner={project.role === 'OWNER'}/></section>
     {project.role === 'OWNER' && <section className="members-section" id="members" aria-labelledby="members-title">
       <div className="section-heading"><h2 id="members-title">Miembros <span className="count">{members.length}</span></h2></div>
       <p className="section-intro">Los editores pueden modificar diagramas y versiones. Los lectores solo pueden verlos.</p>

@@ -13,6 +13,8 @@ import { downloadPlantUml, downloadSql, downloadXmi, exportJson, previewPlantUml
 import { importXmi } from '../api/importApi'
 import { downloadGeneratedBackend, validateBackendGeneration } from '../api/codegenApi'
 import { useAuth } from '../context/AuthContext'
+import TeamChat from '../components/TeamChat'
+import { applyTeamChanges } from '../services/teamChanges'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import {
   applyAiSuggestion,
@@ -538,7 +540,7 @@ function DiagramEditor() {
     }
   }
 
-  async function applySuggestion(suggestion) {
+  async function applyOneSuggestion(suggestion) {
     const applicationResult = await applyAiSuggestion({
       editor: editorRef.current,
       suggestion,
@@ -554,6 +556,15 @@ function DiagramEditor() {
         applicationResult.elementId,
       )
     }
+    return applicationResult
+  }
+
+  function applyTeamChangesToEditor(suggestions) {
+    return applyTeamChanges({ suggestions, applyOne: applyOneSuggestion, getModel: () => editorRef.current.model })
+  }
+
+  async function applySuggestion(suggestion) {
+    const applicationResult = await applyOneSuggestion(suggestion)
     setAiResult((current) => ({
       ...current,
       suggestions: revalidateSuggestions(current.suggestions).map((item) => item.clientId === suggestion.clientId
@@ -922,6 +933,7 @@ function DiagramEditor() {
         />
       </div>
 
+      {diagramId && role && <TeamChat variant="drawer" projectId={projectId} diagramId={diagramId} role={role} isOwner={role === 'OWNER'} onApplyChanges={applyTeamChangesToEditor} />}
       <aside className="ai-panel" aria-label="Asistente de modelado">
         <header className="ai-panel-header"><Sparkles size={18} aria-hidden="true" /><div><h2>Asistente de modelado</h2><p>Revisa el diagrama y propone cambios que tú confirmas.</p></div></header>
         <section className="vision-import">
