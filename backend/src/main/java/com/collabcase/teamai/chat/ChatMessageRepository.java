@@ -10,6 +10,6 @@ import org.springframework.data.repository.query.Param;
 
 public interface ChatMessageRepository extends JpaRepository<ChatMessage, UUID> {
 
-    @Query("select m from ChatMessage m where m.projectId=:p and (m.privateOwnerId is null or m.privateOwnerId=:u) order by m.createdAt desc")
+    @Query("select m from ChatMessage m where m.projectId=:p and (m.privateOwnerId is null or m.privateOwnerId=:u) order by m.createdAt desc, m.id desc")
     List<ChatMessage> visibleTo(@Param("p") UUID p, @Param("u") UUID u, Pageable page);
 }
