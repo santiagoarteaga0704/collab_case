@@ -1,10 +1,13 @@
 // Conector de la IA local: une Ollama (en esta laptop) con el servidor de Collab CASE.
 import { pathToFileURL } from 'node:url';
 
+// El servidor manda un ping cada 20 s; si en 50 s no llega ninguno, la conexión está muerta.
+export const livenessMsDefault = 50_000;
+
 export function startConnector({
   serverUrl, secret, ollamaUrl = 'http://localhost:11434', model = 'qwen3:4b-instruct',
   log = console.log, WebSocketImpl = globalThis.WebSocket, fetchImpl = fetch,
-  backoffBaseMs = 1000, backoffMaxMs = 15000,
+  backoffBaseMs = 1000, backoffMaxMs = 15000, livenessMs = livenessMsDefault,
 }) {
   let stopped = false;
   let socket = null;
@@ -12,8 +15,10 @@ export function startConnector({
   let attempt = 0;
   let work = Promise.resolve(); // atiende de a un trabajo
   let current = null; // AbortController del trabajo en curso
+  let currentId = null; // id del trabajo en curso
+  let watchdog = null; // vence si el servidor deja de mandar pings
 
-  const abortCurrent = () => { current?.abort(); current = null; };
+  const abortCurrent = () => { current?.abort(); current = null; currentId = null; };
 
   const send = (ws, obj) => {
     try { ws.send(JSON.stringify(obj)); } catch { /* la conexión se cayó; el servidor reintenta */ }
@@ -24,7 +29,7 @@ export function startConnector({
     const { signal } = controller;
     if (signal.aborted) return;
     try {
-      const body = { model, messages: job.messages, stream: true, options: job.options };
+      const body = { model, messages: job.messages, stream: true, options: job.options, keep_alive: '30m' };
       if (job.format != null) body.format = job.format;
       const res = await fetchImpl(`${ollamaUrl}/api/chat`, {
         method: 'POST', signal, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
@@ -71,8 +76,17 @@ export function startConnector({
     if (stopped) return;
     const ws = new WebSocketImpl(serverUrl);
     socket = ws;
+    let handled = false;
+    const armWatchdog = () => {
+      clearTimeout(watchdog);
+      watchdog = setTimeout(() => {
+        log(`Conexión sin noticias del servidor en ${Math.round(livenessMs / 1000)} s: reconectando.`);
+        drop();
+      }, livenessMs);
+    };
     ws.addEventListener('open', () => {
       log('Conectado al servidor, presentándome...');
+      armWatchdog();
       send(ws, { kind: 'hello', secret, model });
     });
     ws.addEventListener('message', (ev) => {
@@ -82,18 +96,22 @@ export function startConnector({
         attempt = 0;
         log(`Listo: la IA (${model}) está conectada al servidor.`);
       } else if (msg.kind === 'ping') {
+        if (!handled) armWatchdog();
         send(ws, { kind: 'pong' });
       } else if (msg.kind === 'job') {
         abortCurrent(); // el servidor solo manda otro si ya abandonó el anterior
         const controller = new AbortController();
         current = controller;
+        currentId = msg.id;
         work = work.then(() => runJob(ws, msg, controller));
+      } else if (msg.kind === 'cancel') {
+        if (msg.id != null && msg.id === currentId) abortCurrent(); // el servidor ya no lo espera
       }
     });
-    let handled = false;
     const onGone = (ev) => {
       if (handled) return;
       handled = true;
+      clearTimeout(watchdog);
       abortCurrent();
       if (stopped) return;
       if (ev?.code === 4001) log('Secreto rechazado por el servidor: revisa IA_CONECTOR_SECRETO');
@@ -102,8 +120,16 @@ export function startConnector({
       log(`Conexión cerrada. Reintento en ${Math.round(wait / 100) / 10} s...`);
       timer = setTimeout(connect, wait);
     };
+    // Node 22 puede disparar error sin close: se agenda el reintento igual y se cierra el socket
+    const drop = () => {
+      onGone();
+      try { ws.close(); } catch { /* ya cerrado */ }
+    };
     ws.addEventListener('close', onGone);
-    ws.addEventListener('error', () => { log('Error de conexión con el servidor.'); });
+    ws.addEventListener('error', () => {
+      log('Error de conexión con el servidor.');
+      drop();
+    });
   }
 
   connect();
@@ -112,6 +138,7 @@ export function startConnector({
     async stop() {
       stopped = true;
       clearTimeout(timer);
+      clearTimeout(watchdog);
       abortCurrent();
       try { socket?.close(); } catch { /* ya cerrado */ }
       await work;

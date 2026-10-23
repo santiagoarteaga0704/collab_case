@@ -196,3 +196,84 @@ test('joinsNdjsonLineSplitAcrossStreamChunks', async () => {
     { kind: 'chunk', id: 's', text: 'Hola' }, { kind: 'done', id: 's', content: 'Hola' }]);
   await c.stop();
 });
+
+// ---- final fix wave ----
+
+test('errorWithoutCloseStillReconnects', async () => {
+  const { c, ws } = setup(async () => { throw new Error('no'); }, { backoffBaseMs: 10, backoffMaxMs: 20 });
+  await until(() => ws() && ws().sent.length === 1);
+  const first = ws();
+  let closed = 0;
+  first.close = () => { closed += 1; }; // Node 22 puede disparar error sin close
+  first.emit('error', {});
+  await until(() => FakeWebSocket.instances.length === 2);
+  assert.equal(closed, 1);
+  await until(() => ws().sent.length === 1);
+  assert.deepEqual(ws().sent[0], { kind: 'hello', secret: 's3', model: 'm' });
+  await c.stop();
+});
+
+test('errorThenCloseReconnectsOnlyOnce', async () => {
+  const { c, ws } = setup(async () => { throw new Error('no'); }, { backoffBaseMs: 10, backoffMaxMs: 20 });
+  await until(() => ws() && ws().sent.length === 1);
+  ws().emit('error', {});
+  await until(() => FakeWebSocket.instances.length === 2);
+  await sleep(60);
+  assert.equal(FakeWebSocket.instances.length, 2);
+  await c.stop();
+});
+
+test('silentServerIsDroppedAndReconnected', async () => {
+  const { c, ws, logs } = setup(async () => { throw new Error('no'); },
+    { backoffBaseMs: 10, backoffMaxMs: 20, livenessMs: 60 });
+  await until(() => ws() && ws().sent.length === 1);
+  await until(() => FakeWebSocket.instances.length === 2, 1000);
+  assert.ok(logs.some((l) => l.includes('sin noticias del servidor')));
+  await c.stop();
+});
+
+test('pingsKeepTheConnectionAlive', async () => {
+  const { c, ws } = setup(async () => { throw new Error('no'); }, { livenessMs: 80 });
+  await until(() => ws() && ws().sent.length === 1);
+  for (let i = 0; i < 8; i++) {
+    await sleep(25);
+    ws().receive({ kind: 'ping' });
+  }
+  assert.equal(FakeWebSocket.instances.length, 1);
+  await c.stop();
+});
+
+test('defaultLivenessIsLongerThanTheServerPing', async () => {
+  const { livenessMsDefault } = await import('./conector.mjs');
+  assert.equal(livenessMsDefault, 50_000);
+});
+
+test('keepsTheModelLoadedBetweenQuestions', async () => {
+  const bodies = [];
+  const f = async (url, init) => {
+    bodies.push(JSON.parse(init.body));
+    return ndjsonResponse([{ message: { content: 'x' }, done: true }]);
+  };
+  const { c, ws } = setup(f);
+  await until(() => ws() && ws().sent.length === 1);
+  ws().receive({ kind: 'job', id: 'k', messages: [], format: null, options: {} });
+  await until(() => ws().sent.some((m) => m.kind === 'done'));
+  assert.equal(bodies[0].keep_alive, '30m');
+  await c.stop();
+});
+
+test('cancelAbortsThatJobAndSendsNothingForIt', async () => {
+  const calls = [];
+  const { c, ws } = setup(hangingFetch(calls));
+  await until(() => ws() && ws().sent.length === 1);
+  ws().receive({ kind: 'job', id: 'j', messages: [], format: null, options: {} });
+  await until(() => calls.length === 1);
+  ws().receive({ kind: 'cancel', id: 'otro' });
+  await sleep(20);
+  assert.equal(calls[0].signal.aborted, false);
+  ws().receive({ kind: 'cancel', id: 'j' });
+  await until(() => calls[0].signal.aborted);
+  await sleep(20);
+  assert.deepEqual(ws().sent.map((m) => m.kind), ['hello']);
+  await c.stop();
+});
