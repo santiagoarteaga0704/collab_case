@@ -38,11 +38,12 @@ export SERVIDOR_WS=wss://d2x41sl49sltgo.cloudfront.net/ws/ai-connector
 node conector-ia/conector.mjs
 ```
 
-## Voz y foto de pizarra (Groq)
+## Voz y foto de pizarra (Gemini)
 
-Están apagadas hasta tener una clave de Groq (gratis en https://console.groq.com/keys). Para activarlas, en el
-servidor editar `/opt/collab-case/.env`: poner `GROQ_API_KEY=gsk_...` y borrar las líneas `STT_PROVIDER=local` y
-`VISION_PROVIDER=ollama`; luego `docker compose -f compose.yml -f compose.override.yml up -d`.
+El perfil `aws` transcribe la voz y lee la foto de la pizarra con Gemini (`gemini-2.5-flash`); la IA miembro del
+equipo sigue siendo local (conector + Ollama). La clave sale gratis de https://aistudio.google.com/apikey y va en
+`/opt/collab-case/.env` como `GEMINI_API_KEY=...`; tras cambiarla, `docker compose -f compose.yml -f compose.override.yml up -d`.
+Otro modelo: `GEMINI_MODEL=...` en el mismo `.env`.
 
 ## Trampas
 

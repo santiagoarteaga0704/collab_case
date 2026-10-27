@@ -27,11 +27,10 @@ public class VisionSuggestionAdapter {
                     "Agregar atributo " + attribute.name(), "Atributo visible en la clase " + candidate.name() + ".",
                     candidate.name(), candidate.name(), null, attribute.name(), attribute.type(), null,
                     null, null, null, null, classId, null, null)));
-            candidate.methods().forEach(method -> result.add(suggestion(SuggestionType.ADD_METHOD,
-                    "Agregar metodo " + method.name(), "Metodo visible en la clase " + candidate.name() + ".",
-                    candidate.name(), candidate.name(), null, null, null,
-                    method.returnType() == null ? method.name() : method.name() + "(): " + method.returnType(),
-                    null, null, null, null, classId, null, null)));
+            candidate.methods().forEach(method -> result.add(withReturnType(suggestion(SuggestionType.ADD_METHOD,
+                    "Agregar metodo " + methodName(method.name()), "Metodo visible en la clase " + candidate.name() + ".",
+                    candidate.name(), candidate.name(), null, null, null, methodName(method.name()),
+                    null, null, null, null, classId, null, null), method.returnType())));
         }
         for (RelationshipCandidate relationship : extraction.relationships()) {
             result.add(suggestion(SuggestionType.ADD_RELATIONSHIP,
@@ -55,5 +54,21 @@ public class VisionSuggestionAdapter {
 
     private String normalize(String value) {
         return value == null ? "" : value.trim().toLowerCase();
+    }
+
+    /** "comprar()" → "comprar": la web arma la firma con el nombre y el tipo de retorno por separado. */
+    static String methodName(String name) {
+        String bare = name.strip();
+        return bare.endsWith("()") ? bare.substring(0, bare.length() - 2).strip() : bare;
+    }
+
+    /** El validador exige tipo de retorno; si la foto no lo muestra se asume void. */
+    private static AiSuggestion withReturnType(AiSuggestion s, String returnType) {
+        String type = returnType == null || returnType.isBlank() ? "void" : returnType.strip();
+        return new AiSuggestion(s.type(), s.title(), s.description(), s.reason(), s.targetClass(), s.className(),
+                s.attributeName(), s.attributeType(), s.methodName(), s.sourceClass(), s.targetClassName(),
+                s.relationshipType(), s.sourceCardinality(), s.targetCardinality(), s.targetElementId(),
+                s.sourceElementId(), s.targetRelationshipId(), s.currentRelationshipType(),
+                s.suggestedRelationshipType(), s.attributes(), s.methods(), s.methodParameters(), type);
     }
 }

@@ -6,7 +6,7 @@
 #   IA_CONECTOR_SECRETO   secreto compartido con conector-ia (vacío = endpoint /ws/ai-connector cerrado)
 #   CORS_ALLOWED_ORIGINS  origen público de la web, p. ej. https://collab.midominio.com
 #                         (también gobierna los orígenes permitidos de los WebSocket)
-#   GROQ_API_KEY          clave de Groq (el perfil aws usa Groq para voz y visión; sin ella la app no arranca)
+#   GEMINI_API_KEY        clave de Gemini (el perfil aws usa Gemini para voz y foto de pizarra; sin ella la app no arranca)
 # Opcional:
 #   APP_PORT              puerto publicado en el host (por omisión 8080)
 #   JAVA_TOOL_OPTIONS     memoria de la JVM (por omisión -Xmx512m, pensado para un t3.micro de 1 GB con swap)
@@ -25,7 +25,7 @@ services:
       JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET}
       IA_CONECTOR_SECRETO: ${IA_CONECTOR_SECRETO:-}
       CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:?define CORS_ALLOWED_ORIGINS}
-      GROQ_API_KEY: ${GROQ_API_KEY:?define GROQ_API_KEY}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:?define GEMINI_API_KEY}
       JAVA_TOOL_OPTIONS: ${JAVA_TOOL_OPTIONS:--Xmx512m -XX:+UseSerialGC}
     ports:
       - "${APP_PORT:-8080}:8080"

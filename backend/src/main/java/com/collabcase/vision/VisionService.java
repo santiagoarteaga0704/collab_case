@@ -95,11 +95,21 @@ public class VisionService {
     private VisionExtraction parse(String content) {
         String normalized = content.trim().replaceFirst("^```(?:json)?\\s*", "").replaceFirst("\\s*```$", "");
         try {
-            return objectMapper.readValue(normalized, VisionExtraction.class);
+            return withUmlCardinalities(objectMapper.readValue(normalized, VisionExtraction.class));
         } catch (RuntimeException exception) {
             throw new VisionException(HttpStatus.BAD_GATEWAY,
                     "El proveedor visual devolvio JSON invalido.", exception);
         }
+    }
+
+    private VisionExtraction withUmlCardinalities(VisionExtraction extraction) {
+        if (extraction == null || extraction.relationships() == null) return extraction;
+        List<RelationshipCandidate> relationships = extraction.relationships().stream()
+                .map(r -> r == null ? null : new RelationshipCandidate(r.temporaryId(), r.sourceClass(), r.targetClass(),
+                        r.relationshipType(), CardinalityNormalizer.normalize(r.sourceCardinality()),
+                        CardinalityNormalizer.normalize(r.targetCardinality()), r.label()))
+                .toList();
+        return new VisionExtraction(extraction.summary(), extraction.classes(), relationships, extraction.warnings());
     }
 
     private void validateExtraction(VisionExtraction extraction) {

@@ -13,6 +13,8 @@ public class VisionPromptBuilder {
             No inventes entidades ausentes. Si una palabra no puede leerse claramente, agrega una advertencia.
             Usa tipos oficiales de Apollon para relationshipType: ClassBidirectional, ClassUnidirectional,
             ClassAggregation, ClassComposition, ClassInheritance, ClassDependency o ClassRealization.
+            Escribe los nombres de metodos sin parentesis (comprar, no comprar()) y las cardinalidades tal como
+            se ven en la imagen: 1, 0..1, *, 1..*, 0..*.
             Los campos dudosos deben ser null. Devuelve unicamente JSON conforme al esquema.
             """;
 
