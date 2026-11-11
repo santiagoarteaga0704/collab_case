@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 
+import 'app_config.dart';
 import '../ai/local_ai_service.dart';
 import '../ai/mobile_assistant.dart';
 import '../ai/model_manager.dart';
@@ -50,7 +51,11 @@ class AppController extends ChangeNotifier {
       }
       definition = await storage.loadDefinition();
       if (definition == null) {
-        throw StateError('No existe una definición local.');
+        initializationError =
+            'No se pudo conectar con el backend en ${AppConfig.serverUrl}. '
+            'Revisa que esté encendido y que el teléfono esté en la misma red.';
+        notifyListeners();
+        return;
       }
       assistant = buildAssistant(definition!);
       modelPath = await modelManager.configuredPath();

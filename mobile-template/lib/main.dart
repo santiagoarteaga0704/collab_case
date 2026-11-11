@@ -7,6 +7,7 @@ import 'ai/local_ai_service.dart';
 import 'ai/mobile_assistant.dart';
 import 'ai/model_manager.dart';
 import 'config/app_controller.dart';
+import 'config/server_settings.dart';
 import 'data/local/database_service.dart';
 import 'data/remote/mobile_api_client.dart';
 import 'repositories/mobile_repository.dart';
@@ -17,6 +18,7 @@ import 'voice/offline_tts_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await ServerSettings.load();
   final storage = await DatabaseService.open();
   final repository = MobileRepository(storage);
   final localAi = LlamaLocalAiService();

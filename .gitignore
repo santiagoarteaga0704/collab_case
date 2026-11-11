@@ -68,3 +68,6 @@ backend/.._*/
 *-error.txt
 generated-verification/
 backend/stable/
+
+# APK de la app móvil que va dentro del ZIP generado (160 MB, no entra en GitHub; ver docs/despliegue-aws.md)
+backend/src/main/resources/codegen/mobile-app.apk

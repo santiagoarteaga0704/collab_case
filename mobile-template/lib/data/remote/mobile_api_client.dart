@@ -8,13 +8,13 @@ import '../../models/pending_mutation.dart';
 class MobileApiClient {
   MobileApiClient({http.Client? client, String? baseUrl})
     : _client = client ?? http.Client(),
-      _baseUrl = (baseUrl ?? AppConfig.backendBaseUrl).replaceAll(
-        RegExp(r'/$'),
-        '',
-      );
+      _fixedBaseUrl = baseUrl;
 
   final http.Client _client;
-  final String _baseUrl;
+  final String? _fixedBaseUrl;
+
+  String get _baseUrl =>
+      (_fixedBaseUrl ?? AppConfig.serverUrl).replaceAll(RegExp(r'/$'), '');
   static const _requestTimeout = Duration(seconds: 10);
 
   Map<String, String> get _headers => {

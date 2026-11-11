@@ -3,6 +3,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import '../config/app_config.dart';
 import '../config/app_controller.dart';
+import '../config/server_settings.dart';
 import '../voice/offline_speech_service.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -74,6 +75,46 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _editServer() async {
+    final input = TextEditingController(text: AppConfig.serverUrl);
+    final value = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Dirección del backend'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'IP de la computadora donde corre el backend generado, con el puerto 8081. '
+              'Ejemplo: 192.168.1.10:8081',
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: input,
+              autofocus: true,
+              keyboardType: TextInputType.url,
+              decoration: const InputDecoration(border: OutlineInputBorder()),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, input.text),
+            child: const Text('Guardar y conectar'),
+          ),
+        ],
+      ),
+    );
+    if (value == null || value.trim().isEmpty) return;
+    await ServerSettings.save(value);
+    await widget.retry();
+  }
+
   @override
   Widget build(BuildContext context) => AnimatedBuilder(
     animation: widget.controller,
@@ -108,11 +149,23 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(controller.initializationError!),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Text(
+                    controller.initializationError!,
+                    textAlign: TextAlign.center,
+                  ),
+                ),
                 const SizedBox(height: 12),
                 FilledButton(
                   onPressed: widget.retry,
                   child: const Text('Reintentar'),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _editServer,
+                  icon: const Icon(Icons.dns_outlined),
+                  label: const Text('Dirección del backend'),
                 ),
               ],
             ),
@@ -122,6 +175,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       return Scaffold(
         appBar: AppBar(
           title: Text(controller.definition?.name ?? 'Aplicación'),
+          actions: [
+            IconButton(
+              tooltip: 'Dirección del backend',
+              onPressed: _editServer,
+              icon: const Icon(Icons.dns_outlined),
+            ),
+          ],
         ),
         body: SafeArea(
           child: Padding(
