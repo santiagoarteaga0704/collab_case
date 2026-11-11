@@ -76,6 +76,20 @@ class XmiDiagramExchangeTests {
         assertThat(result.warnings()).anyMatch(item -> item.contains("geometria"));
     }
 
+    @Test void everyXmiIdIsUniqueAndConnectorsPointToTheirClassesInTheDiagram() {
+        var a = new AiClassContext("a", "Cliente", List.of(new AiAttributeContext("a1", "nombre", "String", "+ nombre: String"),
+                new AiAttributeContext("a2", "email", "String", "+ email: String")), List.of());
+        var b = new AiClassContext("b", "Pedido", List.of(new AiAttributeContext("b1", "fecha", "Date", "+ fecha: Date"),
+                new AiAttributeContext("b2", "total", "double", "+ total: double")), List.of());
+        var r = new AiRelationshipContext("r", "a", "Cliente", "b", "Pedido", "ClassBidirectional", "1", "0..*", "hace");
+        String xml = new String(exporter.export(context(List.of(a, b), List.of(r))), StandardCharsets.UTF_8);
+        var ids = java.util.regex.Pattern.compile("xmi:id=\"([^\"]+)\"").matcher(xml).results().map(m -> m.group(1)).toList();
+        assertThat(ids).doesNotHaveDuplicates();
+        var duids = java.util.regex.Pattern.compile("DUID=([0-9A-F]+);").matcher(xml).results().map(m -> m.group(1)).toList();
+        assertThat(duids).hasSize(2);
+        assertThat(xml).contains("EOID=" + duids.get(1) + ";SOID=" + duids.get(0) + ";");
+    }
+
     @Test void exportContainsOneEaPackageOneLogicalDiagramAndNoPackagedPrimitiveTypes() {
         String xml = new String(exporter.export(twoClasses("ClassBidirectional", "1", "0..*")), StandardCharsets.UTF_8);
         assertThat(xml).contains("xmi:Documentation", "xmi:Extension", "<connectors>", "<diagrams>",

@@ -54,10 +54,10 @@ public class XmiDiagramExporter {
             for (AiClassContext item : context.classes()) { classIds.put(item.id(), id("EAID")); classes.put(item.id(), item); }
             for (AiRelationshipContext item : context.relationships()) relationIds.put(item.id(), id("EAID"));
             for (AiClassContext item : context.classes()) {
-                Element clazz = packaged(d, "uml:Class", classIds.get(item.id()), item.name()); int n = 1;
+                Element clazz = packaged(d, "uml:Class", classIds.get(item.id()), item.name());
                 for (var attribute : item.attributes()) {
                     Element property = add(d, clazz, null, "ownedAttribute"); property(property, id("EAID"), attribute.name(), visibility(attribute.displayName()), "none");
-                    bounds(d, property, "1", "attribute_" + n++); type(d, property, attribute.type());
+                    bounds(d, property, "1", id("EAID_LI")); type(d, property, attribute.type());
                 }
                 for (var method : item.methods()) {
                     Element operation = add(d, clazz, null, "ownedOperation"); xmi(operation, "type", "uml:Operation"); xmi(operation, "id", id("EAID"));
@@ -113,12 +113,18 @@ public class XmiDiagramExporter {
         Element style1 = add(d, diagram, null, "style1"); style1.setAttribute("value", "ShowPrivate=1;ShowProtected=1;ShowPublic=1;HideRelationships=0;ConnectorNotation=UML 2.1;");
         Element style2 = add(d, diagram, null, "style2"); style2.setAttribute("value", "TConnectorNotation=UML 2.1;ShowOpRetType=1;"); add(d, diagram, null, "extendedProperties"); add(d, diagram, null, "xrefs");
         Element visuals = add(d, diagram, null, "elements"); Map<String, Map<String, Object>> nodes = rawNodes(rawModel); int seq = 1;
+        Map<String, String> duids = new LinkedHashMap<>();
         for (AiClassContext item : context.classes()) {
             Map<String, Object> node = nodes.get(item.id()), position = nested(node, "position"); int x = number(position.get("x"), 60 + (seq - 1) % 4 * 240), y = number(position.get("y"), 60 + (seq - 1) / 4 * 200);
             int width = number(node == null ? null : node.get("width"), 180), height = number(node == null ? null : node.get("height"), 70 + (item.attributes().size() + item.methods().size()) * 25);
-            Element visual = add(d, visuals, null, "element"); visual.setAttribute("geometry", "Left=" + x + ";Top=" + y + ";Right=" + (x + width) + ";Bottom=" + (y + height) + ";"); visual.setAttribute("subject", classIds.get(item.id())); visual.setAttribute("seqno", String.valueOf(seq++)); visual.setAttribute("style", "DUID=" + shortId() + ";");
+            Element visual = add(d, visuals, null, "element"); visual.setAttribute("geometry", "Left=" + x + ";Top=" + y + ";Right=" + (x + width) + ";Bottom=" + (y + height) + ";"); visual.setAttribute("subject", classIds.get(item.id())); visual.setAttribute("seqno", String.valueOf(seq++));
+            String duid = shortId(); duids.put(item.id(), duid); visual.setAttribute("style", "DUID=" + duid + ";");
         }
-        for (AiRelationshipContext relation : context.relationships()) { Element visual = add(d, visuals, null, "element"); visual.setAttribute("geometry", "SX=0;SY=0;EX=0;EY=0;EDGE=2;$LLB=;LLT=;LMT=;LMB=;LRT=;LRB=;IRHS=;ILHS=;Path=;"); visual.setAttribute("subject", relationIds.get(relation.id())); visual.setAttribute("style", "Mode=3;Color=-1;LWidth=0;Hidden=0;"); }
+        for (AiRelationshipContext relation : context.relationships()) {
+            if (!duids.containsKey(relation.sourceElementId()) || !duids.containsKey(relation.targetElementId())) continue;
+            Element visual = add(d, visuals, null, "element"); visual.setAttribute("geometry", "SX=0;SY=0;EX=0;EY=0;EDGE=2;$LLB=;LLT=;LMT=;LMB=;LRT=;LRB=;IRHS=;ILHS=;Path=;"); visual.setAttribute("subject", relationIds.get(relation.id()));
+            visual.setAttribute("style", "Mode=3;EOID=" + duids.get(relation.targetElementId()) + ";SOID=" + duids.get(relation.sourceElementId()) + ";Color=-1;LWidth=0;Hidden=0;");
+        }
     }
 
     private void eaElement(Document d, Element parent, String id, String type, String name, String packageId, int local) { Element e = add(d, parent, null, "element"); xmi(e, "idref", id); xmi(e, "type", type); e.setAttribute("name", name); e.setAttribute("scope", "public"); Element m = add(d, e, null, "model"); m.setAttribute("package", packageId); m.setAttribute("ea_localid", String.valueOf(local)); m.setAttribute("ea_eleType", type.endsWith("Package") ? "package" : "element"); Element p = add(d, e, null, "properties"); p.setAttribute("sType", type.substring(type.indexOf(':') + 1)); p.setAttribute("scope", "public"); add(d, e, null, "extendedProperties"); }
