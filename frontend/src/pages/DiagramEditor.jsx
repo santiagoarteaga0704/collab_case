@@ -106,7 +106,7 @@ function DiagramEditor() {
   const [codegenValidation, setCodegenValidation] = useState()
   const [codegenError, setCodegenError] = useState('')
   const [isCodegenBusy, setIsCodegenBusy] = useState(false)
-  const [codegenDownloaded, setCodegenDownloaded] = useState(0)
+  const [codegenDownload, setCodegenDownload] = useState({ loaded: 0, total: 0 })
   const diagramIdRef = useRef(diagramId ?? null)
   const editorRef = useRef()
   const socketRef = useRef()
@@ -409,10 +409,10 @@ function DiagramEditor() {
   async function downloadBackend() {
     setIsCodegenBusy(true)
     setCodegenError('')
-    setCodegenDownloaded(0)
+    setCodegenDownload({ loaded: 0, total: 0 })
     try {
       await flushPendingSave()
-      const response = await downloadGeneratedBackend(diagramId, (event) => setCodegenDownloaded(event.loaded ?? 0))
+      const response = await downloadGeneratedBackend(diagramId, (event) => setCodegenDownload({ loaded: event.loaded ?? 0, total: event.total ?? 0 }))
       const url = URL.createObjectURL(response.data)
       const anchor = document.createElement('a')
       anchor.href = url
@@ -428,7 +428,7 @@ function DiagramEditor() {
       setCodegenError(message ?? error.message ?? 'No se pudo generar el backend.')
     } finally {
       setIsCodegenBusy(false)
-      setCodegenDownloaded(0)
+      setCodegenDownload({ loaded: 0, total: 0 })
     }
   }
 
@@ -1225,9 +1225,7 @@ function DiagramEditor() {
             {codegenValidation?.errors?.length > 0 && <div className="ai-error"><strong>Errores</strong><ul>{codegenValidation.errors.map((item) => <li key={item}>{item}</li>)}</ul></div>}
             {codegenValidation?.warnings?.length > 0 && <div className="export-warnings"><strong>Advertencias</strong><ul>{codegenValidation.warnings.map((item) => <li key={item}>{item}</li>)}</ul></div>}
             {codegenError && <p className="ai-error">{codegenError}</p>}
-            {isCodegenBusy && <p role="status">{codegenDownloaded > 0
-              ? `Descargando el proyecto… ${(codegenDownloaded / 1048576).toFixed(0)} MB de unos 260 MB (trae el APK listo; puede tardar unos minutos).`
-              : 'Generando el proyecto… la descarga pesa unos 260 MB porque incluye el APK.'}</p>}
+            {isCodegenBusy && <CodegenProgress loaded={codegenDownload.loaded} total={codegenDownload.total} />}
             <div className="export-actions">
               <button type="button" className="secondary-button" disabled={isCodegenBusy} onClick={validateCodegen}>Validar diagrama</button>
               <button type="button" className="primary-button" disabled={isCodegenBusy || !codegenValidation?.valid} onClick={downloadBackend}><Download size={16} aria-hidden="true" /> Descargar proyecto</button>
@@ -1241,3 +1239,26 @@ function DiagramEditor() {
 }
 
 export default DiagramEditor
+
+/** Barra de la generación: en movimiento mientras el servidor arma el ZIP, con porcentaje real al descargarlo. */
+function CodegenProgress({ loaded, total }) {
+  const mb = (bytes) => (bytes / 1048576).toFixed(0)
+  const downloading = loaded > 0
+  const percent = downloading && total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : null
+  const text = !downloading
+    ? 'Generando el proyecto en el servidor… (backend, app móvil y APK)'
+    : percent != null
+      ? `Descargando el proyecto… ${mb(loaded)} de ${mb(total)} MB (${percent} %)`
+      : `Descargando el proyecto… ${mb(loaded)} MB`
+  return (
+    <div className="codegen-progress" role="status" aria-live="polite">
+      <div className={`codegen-progress-track${percent == null ? ' is-indeterminate' : ''}`}
+        role="progressbar" aria-label="Avance de la generación" aria-valuemin={0} aria-valuemax={100}
+        aria-valuenow={percent ?? undefined}>
+        <span style={percent != null ? { width: `${percent}%` } : undefined} />
+      </div>
+      <p>{text}</p>
+      <small>El ZIP pesa unos 260 MB porque trae el APK listo; según tu internet puede tardar unos minutos. No cierres esta ventana.</small>
+    </div>
+  )
+}
