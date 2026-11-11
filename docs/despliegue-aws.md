@@ -16,6 +16,20 @@ HTTPS es obligatorio: `crypto.randomUUID()` del editor solo existe en contexto s
 
 ## Volver a desplegar una versión nueva
 
+**Antes, el APK.** El ZIP que genera «Generar código» incluye `<proyecto>.apk`, que sale de
+`backend/src/main/resources/codegen/mobile-app.apk`. Ese archivo pesa unos 190 MB y no está en
+GitHub (límite de 100 MB). Si no existe, o si cambió `mobile-template/`, se arma así (APK universal:
+teléfonos ARM de 64 y 32 bits y emuladores):
+
+```bash
+cd mobile-template
+flutter build apk --release --target-platform android-arm,android-arm64,android-x64
+cp build/app/outputs/flutter-apk/app-release.apk ../backend/src/main/resources/codegen/mobile-app.apk
+```
+
+Si cambió `mobile-template/`, también hay que regenerar `backend/src/main/resources/codegen/mobile-template.zip`
+(el código fuente que va en la carpeta `mobile/` del ZIP), sin `build/`, `.dart_tool/` ni `.flutter-plugins-dependencies`.
+
 Desde la raíz del repo, en la PC (la imagen no se construye en el servidor: 1 GB de RAM no alcanza):
 
 ```bash
