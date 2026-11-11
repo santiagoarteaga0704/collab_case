@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Generación de backend y APK — Collab CASE</title>
+<style>
+  @page { size: A4; margin: 16mm 15mm 18mm; }
+  :root { --ink:#1d232a; --muted:#5c6570; --rule:#d6d9d3; --accent:#13615a; --tint:#e2eeeb; --warn:#fbf0dc; --warn-ink:#85560a; --code:#f4f5f2; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", system-ui, sans-serif; color: var(--ink); font-size: 10.5pt; line-height: 1.5; margin: 0; }
+  h1 { font-size: 26pt; line-height: 1.15; margin: 0 0 8px; letter-spacing: -0.5px; }
+  h2 { font-size: 15pt; color: var(--accent); margin: 0 0 8px; padding-top: 4px; border-bottom: 2px solid var(--tint); padding-bottom: 4px; }
+  h3 { font-size: 11.5pt; margin: 14px 0 4px; }
+  p { margin: 6px 0; }
+  .page { page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  .cover { height: 255mm; display: flex; flex-direction: column; justify-content: center; }
+  .eyebrow { color: var(--accent); font-weight: 700; letter-spacing: 1px; text-transform: uppercase; font-size: 9.5pt; }
+  .lead { font-size: 13pt; color: var(--muted); max-width: 150mm; }
+  .meta { margin-top: 28px; color: var(--muted); font-size: 10pt; }
+  .step { display: inline-block; background: var(--accent); color: #fff; border-radius: 4px; padding: 0 7px; font-size: 9pt; font-weight: 700; margin-right: 6px; vertical-align: 2px; }
+  figure { margin: 10px 0; }
+  figure img { width: 100%; border: 1px solid var(--rule); border-radius: 6px; display: block; }
+  figcaption { color: var(--muted); font-size: 9pt; margin-top: 4px; }
+  .phones { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .phones2 { display: grid; grid-template-columns: repeat(2, 58mm); gap: 14px; justify-content: center; }
+  pre, code { font-family: Consolas, "Cascadia Mono", monospace; font-size: 8.6pt; }
+  pre { background: var(--code); border: 1px solid var(--rule); border-radius: 6px; padding: 8px 10px; white-space: pre-wrap; word-break: break-all; margin: 6px 0; }
+  code { background: var(--code); padding: 0 3px; border-radius: 3px; }
+  table { width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 9.6pt; }
+  th, td { border: 1px solid var(--rule); padding: 5px 7px; text-align: left; vertical-align: top; }
+  th { background: var(--tint); }
+  .note { background: var(--warn); color: var(--warn-ink); border-left: 4px solid #d9962b; padding: 8px 10px; border-radius: 4px; margin: 10px 0; }
+  .ok { background: var(--tint); border-left: 4px solid var(--accent); padding: 8px 10px; border-radius: 4px; margin: 10px 0; }
+  .flow { display: flex; align-items: stretch; gap: 6px; margin: 12px 0; }
+  .flow div { flex: 1; border: 1px solid var(--rule); border-radius: 6px; padding: 8px; font-size: 9pt; background: #fcfcfb; }
+  .flow div b { display: block; color: var(--accent); font-size: 9.5pt; margin-bottom: 2px; }
+  .flow span { align-self: center; color: var(--muted); font-weight: 700; }
+  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  ol, ul { margin: 6px 0; padding-left: 20px; }
+  li { margin: 2px 0; }
+</style>
+</head>
+<body>
+
+<section class="page cover">
+  <div class="eyebrow">Collab CASE · Guía paso a paso</div>
+  <h1>Del diagrama UML al backend Spring Boot y la app Android</h1>
+  <p class="lead">Cómo Collab CASE genera, a partir de un diagrama de clases, un backend completo y un APK listo para instalar que se conecta a ese backend y funciona sin internet.</p>
+  <div class="flow" style="margin-top:26px">
+    <div><b>1. Diagrama</b>Clases, atributos y relaciones en el editor colaborativo.</div><span>→</span>
+    <div><b>2. Validar</b>El servidor revisa que el modelo se pueda generar.</div><span>→</span>
+    <div><b>3. ZIP</b>Backend Spring Boot + código Flutter + APK.</div><span>→</span>
+    <div><b>4. Backend</b>Se arranca con Maven en la computadora.</div><span>→</span>
+    <div><b>5. APK</b>Se instala en el teléfono y se conecta al backend.</div>
+  </div>
+  <p class="meta">Ejemplo usado en toda la guía: proyecto <b>Tienda en línea</b>, diagrama <b>Ventas</b> (Cliente, Pedido, Producto).<br>Todas las capturas son reales: web en https://d2x41sl49sltgo.cloudfront.net, backend generado corriendo en la PC y APK en un teléfono Android (emulador).<br>10 de noviembre de 2026</p>
+</section>
+
+<section class="page">
+  <h2><span class="step">PASO 1</span>Modelar el diagrama de clases</h2>
+  <p>En el editor se dibujan las clases con sus atributos (<code>+ nombre: Tipo</code>), métodos y relaciones con multiplicidad. Esto es lo único que hay que hacer a mano: todo lo demás sale de aquí.</p>
+  <figure><img src="img/02-editor.png"><figcaption>Diagrama «Ventas»: Cliente 1 — 0..* Pedido, y Pedido 0..* — 1..* Producto (muchos a muchos).</figcaption></figure>
+  <table>
+    <tr><th>Lo que se dibuja</th><th>En qué se convierte</th></tr>
+    <tr><td>Una clase (<code>Cliente</code>)</td><td>Una tabla en la base de datos y un recurso REST <code>/api/cliente</code></td></tr>
+    <tr><td>Un atributo (<code>+ precio: BigDecimal</code>)</td><td>Una columna y un campo del JSON</td></tr>
+    <tr><td><code>+ id: Long</code></td><td>Clave primaria autoincremental (si el id es <code>UUID</code>, se genera como UUID)</td></tr>
+    <tr><td>Relación 1 — 0..*</td><td><code>@ManyToOne</code> / <code>@OneToMany</code> con clave foránea</td></tr>
+    <tr><td>Relación 0..* — 1..*</td><td><code>@ManyToMany</code> con tabla intermedia (<code>pedido_producto</code>)</td></tr>
+    <tr><td>Herencia</td><td><code>extends</code> con <code>@Inheritance(JOINED)</code></td></tr>
+    <tr><td>Un método (<code>calcularTotal()</code>)</td><td>El esqueleto del método, para completar a mano</td></tr>
+  </table>
+</section>
+
+<section class="page">
+  <h2><span class="step">PASO 2</span>Generar código y validar</h2>
+  <p>En la barra del editor se toca <b>Generar código</b>. Se abre esta ventana; con <b>Validar diagrama</b> el servidor revisa el modelo antes de generar nada.</p>
+  <figure><img src="img/04-validado.png"><figcaption>Resultado de la validación: 3 entidades, 2 relaciones, «Listo para generar» y una advertencia útil (no bloquea).</figcaption></figure>
+  <h3>Qué revisa la validación</h3>
+  <ul>
+    <li>Que cada clase tenga un nombre válido en Java y que no se repita.</li>
+    <li>Que los tipos de los atributos existan (String, Integer, Long, BigDecimal, LocalDate, Boolean, UUID…).</li>
+    <li>Que las relaciones apunten a clases que existen y que no choquen entre sí.</li>
+    <li>Si hay <b>errores</b>, el botón de descarga no genera nada y los muestra; las <b>advertencias</b> solo avisan.</li>
+  </ul>
+  <div class="note">La validación y la generación las hace el servidor sin IA: el mismo diagrama siempre produce exactamente el mismo código.</div>
+</section>
+
+<section class="page">
+  <h2><span class="step">PASO 3</span>Descargar el proyecto (ZIP)</h2>
+  <p>Con <b>Descargar proyecto</b> se baja un ZIP con el nombre del diagrama (<code>ventas.zip</code>). Trae tres cosas: el <b>backend</b>, el <b>código de la app móvil</b> y el <b>APK ya compilado</b>.</p>
+  <pre>ventas/
+├── README.md                  ← pasos para arrancar todo
+├── ventas.apk                 ← APP ANDROID LISTA PARA INSTALAR (cualquier teléfono con Android 9 o superior)
+├── backend/                   ← proyecto Spring Boot (Java 21, Maven)
+│   ├── pom.xml
+│   ├── app-definition.json    ← el diagrama en JSON (entidades y relaciones)
+│   └── src/main/java/com/collabcase/generated/ventas/
+│       ├── entity/        Cliente.java  Pedido.java  Producto.java
+│       ├── repository/    ClienteRepository.java …
+│       ├── dto/           ClienteRequest.java  ClienteResponse.java …
+│       ├── service/       ClienteService.java …
+│       ├── controller/    ClienteController.java …  MetaController.java
+│       ├── mobile/        sincronización con el teléfono (/api/mobile/…)
+│       └── exception/     manejo de errores 404 / 409
+└── mobile/                    ← código fuente Flutter de la app (para modificarla)</pre>
+  <h3>Lo que genera por cada clase del diagrama</h3>
+  <table>
+    <tr><th>Archivo</th><th>Para qué</th></tr>
+    <tr><td><code>entity/Cliente.java</code></td><td>Entidad JPA: tabla, columnas, relaciones, <code>syncId</code> y <code>version</code> para sincronizar</td></tr>
+    <tr><td><code>repository/ClienteRepository.java</code></td><td>Acceso a la base (Spring Data JPA)</td></tr>
+    <tr><td><code>dto/ClienteRequest/Response.java</code></td><td>Lo que entra y sale por la API</td></tr>
+    <tr><td><code>service/ClienteService.java</code></td><td>Alta, consulta, modificación y baja; registra cada cambio para el teléfono</td></tr>
+    <tr><td><code>controller/ClienteController.java</code></td><td>Endpoints REST <code>GET/POST/PUT/DELETE /api/cliente</code></td></tr>
+    <tr><td><code>mobile/ClienteMobileSyncAdapter.java</code></td><td>Aplica los cambios que llegan del teléfono</td></tr>
+  </table>
+</section>
+
+<section class="page">
+  <h2>Así se ve el código generado</h2>
+  <h3>Entidad (fragmento de <code>entity/Cliente.java</code>)</h3>
+  <pre>@Entity
+@Table(name="cliente")
+public class Cliente {
+  @Id
+  @GeneratedValue(strategy=GenerationType.IDENTITY)
+  private Long id;
+  @Column(nullable=false,unique=true,updatable=false) private UUID syncId;
+  @Version private Long version;
+  private String nombre;
+  private String email;
+  @OneToMany(mappedBy="cliente")
+  private List&lt;Pedido&gt; pedidoList = new ArrayList&lt;&gt;();
+  // getters y setters…
+}</pre>
+  <h3>Controlador REST (<code>controller/ClienteController.java</code>)</h3>
+  <pre>@RestController @RequestMapping("/api/cliente")
+public class ClienteController {
+  @GetMapping                     public List&lt;ClienteResponse&gt; all()
+  @GetMapping("/{id}")            public ClienteResponse one(@PathVariable Long id)
+  @PostMapping @ResponseStatus(CREATED) public ClienteResponse create(@Valid @RequestBody ClienteRequest r)
+  @PutMapping("/{id}")            public ClienteResponse update(@PathVariable Long id, @Valid @RequestBody ClienteRequest r)
+  @DeleteMapping("/{id}") @ResponseStatus(NO_CONTENT) public void delete(@PathVariable Long id)
+}</pre>
+  <h3>Muchos a muchos (<code>Pedido</code> ↔ <code>Producto</code>)</h3>
+  <pre>@ManyToMany
+@JoinTable(name="pedido_producto",
+           joinColumns=@JoinColumn(name="pedido_id"),
+           inverseJoinColumns=@JoinColumn(name="producto_id"))
+private Set&lt;Producto&gt; productoSet = new LinkedHashSet&lt;&gt;();</pre>
+  <p>Además trae una <b>prueba automática</b> (<code>ApplicationTests.java</code>) que arranca el backend y crea un registro de cada entidad: <code>mvn test</code> confirma que todo funciona.</p>
+</section>
+
+<section class="page">
+  <h2><span class="step">PASO 4</span>Arrancar el backend generado</h2>
+  <p>Se necesita Java 21 y Maven. Por defecto usa una base H2 en archivo (no hay que instalar nada más) y escucha en el <b>puerto 8081</b>.</p>
+  <pre>cd ventas/backend
+mvn spring-boot:run</pre>
+  <p>Con PostgreSQL: definir <code>DB_URL</code>, <code>DB_USERNAME</code>, <code>DB_PASSWORD</code> y arrancar con <code>-Dspring-boot.run.profiles=postgres</code>.</p>
+  <h3>Prueba real de la API generada</h3>
+  <pre>$ curl http://localhost:8081/api/health
+{"status":"UP"}
+
+$ curl -X POST http://localhost:8081/api/cliente -d '{"nombre":"Ana Perez","email":"ana@tienda.com"}'
+{"id":1,"syncId":"ac41f7f5-…","version":0,"nombre":"Ana Perez","email":"ana@tienda.com"}
+
+$ curl -X POST http://localhost:8081/api/producto -d '{"nombre":"Teclado","precio":120.50,"stock":10}'
+{"id":1,"syncId":"bd97856f-…","version":0,"nombre":"Teclado","precio":120.50,"stock":10}
+
+$ curl -X POST http://localhost:8081/api/pedido -d '{"fecha":"2026-11-11","total":120.50,"productoIds":[1]}'
+{"id":1,"syncId":"688f6f76-…","version":0,"fecha":"2026-11-11","total":120.50,"productoIds":[1]}</pre>
+  <h3>Endpoints que quedan disponibles</h3>
+  <table>
+    <tr><th>Ruta</th><th>Qué hace</th></tr>
+    <tr><td><code>/api/cliente</code>, <code>/api/pedido</code>, <code>/api/producto</code></td><td>CRUD de cada entidad del diagrama</td></tr>
+    <tr><td><code>/api/health</code>, <code>/api/meta</code></td><td>Estado del servidor y lista de entidades</td></tr>
+    <tr><td><code>/api/mobile/definition</code></td><td>La definición de la app (entidades y campos) para el teléfono</td></tr>
+    <tr><td><code>/api/mobile/changes</code>, <code>/api/mobile/sync</code></td><td>Sincronización: el teléfono baja cambios y sube lo que hizo sin conexión</td></tr>
+  </table>
+</section>
+
+<section class="page">
+  <h2><span class="step">PASO 5</span>Instalar el APK y conectarlo al backend</h2>
+  <ol>
+    <li>Pasar <code>ventas.apk</code> al teléfono e instalarlo (Android pide permitir apps de origen desconocido).</li>
+    <li>Ver la IP de la computadora donde corre el backend: <code>ipconfig</code> en Windows (por ejemplo <code>192.168.1.10</code>).</li>
+    <li>Con el teléfono en la <b>misma red Wi-Fi</b>, abrir la app y tocar <b>Dirección del backend</b>; escribir <code>IP:8081</code> y <b>Guardar y conectar</b>.</li>
+  </ol>
+  <div class="phones">
+    <figure><img src="img/09-app-sin-backend.png"><figcaption>Sin backend: la app lo dice y ofrece cambiar la dirección.</figcaption></figure>
+    <figure><img src="img/11-direccion.png"><figcaption>Se escribe la IP de la PC con el puerto 8081 (en el emulador la PC es 10.0.2.2).</figcaption></figure>
+    <figure><img src="img/12-conectada-ip.png"><figcaption>Conectada: el título «Ventas» viene del backend generado.</figcaption></figure>
+  </div>
+  <div class="ok">La dirección queda guardada en el teléfono. El ícono de servidor (arriba a la derecha) permite cambiarla cuando se quiera.</div>
+</section>
+
+<section class="page">
+  <h2>La app trabaja con los datos del backend</h2>
+  <p>La app lee del backend qué entidades y campos tiene el sistema, guarda los datos en el teléfono (SQLite) y sincroniza sola. Se le habla en español o por voz (reconocimiento de voz <b>offline</b>, incluido en el APK); opcionalmente se le carga un modelo de IA local (GGUF) desde «Seleccionar modelo IA».</p>
+  <div class="phones2">
+    <figure><img src="img/15-prod-conectada.png"><figcaption>«crea un producto llamado Mouse» → registrado en el teléfono (APK descargado de la web).</figcaption></figure>
+    <div>
+      <h3 style="margin-top:0">Y aparece en el backend</h3>
+      <pre>$ curl http://localhost:8081/api/producto
+[ {"id":1,"nombre":"Teclado",
+   "precio":120.50,"stock":10, …},
+  {"id":2,"nombre":"Mouse",
+   "precio":null,"stock":null, …} ]</pre>
+      <p>El producto creado en el teléfono llegó al backend por <code>/api/mobile/sync</code>. Lo mismo pasó con un cliente («crea un cliente llamado Luis Gomez»).</p>
+      <h3>Sin conexión</h3>
+      <p>Si el teléfono pierde la red, lo que se crea o modifica queda en cola en el teléfono («Se sincronizará cuando haya conexión») y se envía solo al volver. Cada registro tiene un <code>syncId</code> y una <code>version</code>, así no se duplica ni se pisa.</p>
+    </div>
+  </div>
+</section>
+
+<section class="page">
+  <h2>Prueba: relación muchos a muchos (Pedido ↔ Producto)</h2>
+  <p>La relación se dibujó en el editor web (<code>Pedido 0..* — 1..* Producto</code>) y se generó desde la web. El backend generado la maneja con <code>@ManyToMany</code> y la tabla intermedia <code>pedido_producto</code>; en la API se manda y se recibe como una lista de ids (<code>productoIds</code>).</p>
+  <pre>$ POST /api/pedido   {"fecha":"2026-11-11","total":1140.50,"productoIds":[1,2,3]}
+{"id":2,"version":0,"fecha":"2026-11-11","total":1140.50,"productoIds":[1,2,3]}
+
+$ PUT /api/pedido/2  {…,"productoIds":[3]}          ← quitar productos
+{"id":2,"version":1,…,"productoIds":[3]}
+
+$ PUT /api/pedido/1  {…,"productoIds":[]}           ← dejarlo sin productos
+{"id":1,"version":1,…,"productoIds":[]}
+
+$ POST /api/pedido   {…,"productoIds":[99]}         ← producto que no existe
+{"message":"Producto not found"}   (HTTP 404)
+
+$ DELETE /api/producto/3                            ← producto usado en un pedido
+{"message":"No se pudo persistir el recurso por una restricción de datos."}   (HTTP 409)</pre>
+  <h3>Desde el teléfono (sincronización)</h3>
+  <p>El teléfono manda la relación con los <code>syncId</code> de los productos; el backend la guarda y los demás teléfonos la reciben en <code>/api/mobile/changes</code>:</p>
+  <pre>POST /api/mobile/sync  {"mutations":[{"entityType":"Pedido","operation":"UPSERT",
+                        "data":{"fecha":"2026-11-11","total":240,"productoSyncIds":["bd97…","1b37…"]}}]}
+→ aceptadas: 1, conflictos: 0
+→ GET /api/pedido: {"id":3,…,"total":240,"productoIds":[1,2]}</pre>
+  <table>
+    <tr><th>Caso</th><th>Resultado</th></tr>
+    <tr><td>Crear con varios, consultar, modificar, vaciar</td><td>Correcto</td></tr>
+    <tr><td>Referencia a un producto que no existe</td><td>Rechazado (404)</td></tr>
+    <tr><td>Borrar un producto que está en un pedido</td><td>Bloqueado (409), no deja pedidos rotos</td></tr>
+    <tr><td>Relación creada por sincronización móvil</td><td>Guardada y distribuida a los demás teléfonos</td></tr>
+  </table>
+  <div class="note">En la app móvil los comandos crean, listan y renombran registros por nombre; asociar productos a un pedido se hace por la API o por sincronización, no hay todavía un comando para eso en el teléfono.</div>
+</section>
+
+<section class="page">
+  <h2>Cómo funciona por dentro</h2>
+  <h3>En el servidor de Collab CASE (al tocar «Descargar proyecto»)</h3>
+  <div class="flow">
+    <div><b>DiagramService</b>Lee el diagrama guardado (modelo Apollon).</div><span>→</span>
+    <div><b>GenerationModelBuilder</b>Lo pasa a entidades, atributos con tipo Java y relaciones con multiplicidad.</div><span>→</span>
+    <div><b>GenerationValidator</b>Revisa nombres, tipos y relaciones.</div><span>→</span>
+    <div><b>SpringBootProjectGenerator</b>Escribe cada archivo con plantillas fijas.</div><span>→</span>
+    <div><b>ZipService</b>Arma el ZIP en streaming y agrega el APK.</div>
+  </div>
+  <p>Endpoints: <code>GET /api/diagrams/{id}/codegen/backend/validate</code> y <code>POST /api/diagrams/{id}/codegen/backend</code>.</p>
+  <h3>Por qué un mismo APK sirve para cualquier proyecto</h3>
+  <p>La app no trae las entidades metidas en el código: al conectarse pide <code>/api/mobile/definition</code> y arma todo con eso (nombre de la app, entidades, campos). Por eso el servidor incluye en cada ZIP el mismo APK ya compilado y solo hace falta decirle la dirección del backend. Si se quiere cambiar la app, el código fuente está en <code>mobile/</code>:</p>
+  <pre>cd ventas/mobile
+flutter pub get
+flutter build apk --release</pre>
+  <h3>Problemas comunes</h3>
+  <table>
+    <tr><th>Síntoma</th><th>Solución</th></tr>
+    <tr><td>«No se pudo conectar con el backend»</td><td>Backend apagado, IP equivocada o el teléfono en otra red. Probar desde el navegador del teléfono <code>http://IP:8081/api/health</code>.</td></tr>
+    <tr><td>Desde el navegador del teléfono tampoco abre</td><td>El firewall de Windows bloquea el puerto: permitir Java en redes privadas.</td></tr>
+    <tr><td><code>mvn</code> no existe</td><td>Instalar Maven, o abrir <code>backend/</code> en IntelliJ y ejecutar <code>Application</code>.</td></tr>
+    <tr><td>Error de versión de Java</td><td>El backend pide Java 21.</td></tr>
+    <tr><td>El ZIP tarda en bajar</td><td>Pesa unos 250 MB porque trae el APK con el reconocimiento de voz offline (~100 MB de modelo).</td></tr>
+  </table>
+</section>
+
+</body>
+</html>
