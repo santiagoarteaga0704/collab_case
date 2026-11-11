@@ -50,6 +50,8 @@ public class AiJobQueue {
         final Map<String, Object> format;
         final AiJobListener listener;
         Instant startedAt;
+        /** A quién se mandó: la laptop o la IA de respaldo. */
+        ConnectorLink sentTo;
 
         Job(List<Map<String, String>> messages, Map<String, Object> format, AiJobListener listener) {
             this.messages = messages;
@@ -141,7 +143,7 @@ public class AiJobQueue {
             }
             if (fallback == null) {
                 failAll(OFFLINE_REASON, actions);
-            } else if (running != null) {
+            } else if (running != null && running.sentTo == oldLink) {
                 // lo que corría en la laptop se pierde; los que esperan siguen con la IA de respaldo
                 AiJobListener listener = running.listener;
                 running = null;
@@ -290,8 +292,8 @@ public class AiJobQueue {
         lock.lock();
         try {
             if (running != null && running.id.equals(jobId)) {
+                ConnectorLink target = running.sentTo;
                 running = null;
-                ConnectorLink target = target();
                 if (target != null) {
                     Map<String, Object> cancel = new LinkedHashMap<>();
                     cancel.put("kind", "cancel");
@@ -351,6 +353,7 @@ public class AiJobQueue {
             job.startedAt = clock.instant();
             running = job;
             ConnectorLink target = target();
+            job.sentTo = target;
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("kind", "job");
             payload.put("id", job.id.toString());

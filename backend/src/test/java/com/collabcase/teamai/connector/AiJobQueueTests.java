@@ -414,4 +414,19 @@ class AiJobQueueTests {
         assertThat(fallback.idOf(0)).isEqualTo(id2);
         assertThat(queue.connected()).isTrue();
     }
+
+    @Test
+    void aLaptopThatComesAndGoesDoesNotKillTheFallbackJob() {
+        FakeLink fallback = new FakeLink();
+        queue.useFallback(fallback, "gemini-2.5-flash");
+        Recorder r = new Recorder();
+        UUID id = submit(r);
+
+        queue.attach(link, "qwen3:4b-instruct");
+        queue.detach(link);
+        queue.onFinished(id, "listo");
+
+        assertThat(r.events).containsExactly("started", "finished(listo)");
+        assertThat(fallback.sent).hasSize(1);
+    }
 }

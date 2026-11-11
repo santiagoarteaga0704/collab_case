@@ -25,6 +25,9 @@ class GeminiFallbackLinkTests {
     private final AtomicReference<String> body = new AtomicReference<>();
     private volatile int status = 200;
     private volatile String reply;
+    /** Respuestas previas (estado, cuerpo) antes de pasar a status/reply. */
+    private final java.util.Deque<Object[]> before = new java.util.concurrent.ConcurrentLinkedDeque<>();
+    private final java.util.concurrent.atomic.AtomicInteger calls = new java.util.concurrent.atomic.AtomicInteger();
 
     private static final List<Map<String, String>> MSGS = List.of(
             Map.of("role", "system", "content", "eres la IA del equipo"),
@@ -48,9 +51,12 @@ class GeminiFallbackLinkTests {
         server.createContext("/", exchange -> {
             path.set(exchange.getRequestURI().getPath());
             body.set(new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
-            byte[] out = reply.getBytes(StandardCharsets.UTF_8);
+            calls.incrementAndGet();
+            Object[] next = before.pollFirst();
+            int code = next == null ? status : (int) next[0];
+            byte[] out = (next == null ? reply : (String) next[1]).getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
-            exchange.sendResponseHeaders(status, out.length);
+            exchange.sendResponseHeaders(code, out.length);
             exchange.getResponseBody().write(out);
             exchange.close();
         });
@@ -101,5 +107,45 @@ class GeminiFallbackLinkTests {
 
         assertThat(r.events).containsExactly("started", "failed(La IA no está disponible en este momento)");
         assertThat(queue.size()).isZero();
+    }
+
+    @Test
+    void retriesWhenGeminiIsOverloaded() {
+        before.add(new Object[] {503, "{\"error\":{\"status\":\"UNAVAILABLE\"}}"});
+        reply = """
+                {"candidates":[{"content":{"parts":[{"text":"{\\"mensaje\\":\\"ok\\"}"}]}}]}""";
+        AiJobQueue queue = queueWithFallback();
+        Recorder r = new Recorder();
+
+        queue.submit(MSGS, null, r);
+
+        assertThat(r.events).containsExactly("started", "finished({\"mensaje\":\"ok\"})");
+        assertThat(calls.get()).isEqualTo(2);
+    }
+
+    @Test
+    void givesUpAfterThreeOverloadedAttempts() {
+        status = 503;
+        reply = "{}";
+        AiJobQueue queue = queueWithFallback();
+        Recorder r = new Recorder();
+
+        queue.submit(MSGS, null, r);
+
+        assertThat(r.events).containsExactly("started", "failed(" + GeminiFallbackLink.BUSY + ")");
+        assertThat(calls.get()).isEqualTo(GeminiFallbackLink.ATTEMPTS);
+    }
+
+    @Test
+    void tellsWhenTheDailyQuotaIsUsedUp() {
+        status = 429;
+        reply = "{\"error\":{\"details\":[{\"violations\":[{\"quotaId\":\"GenerateRequestsPerDayPerProjectPerModel-FreeTier\"}]}]}}";
+        AiJobQueue queue = queueWithFallback();
+        Recorder r = new Recorder();
+
+        queue.submit(MSGS, null, r);
+
+        assertThat(r.events).containsExactly("started", "failed(" + GeminiFallbackLink.DAILY_LIMIT + ")");
+        assertThat(calls.get()).isEqualTo(1);
     }
 }
