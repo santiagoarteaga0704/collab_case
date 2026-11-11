@@ -98,6 +98,8 @@ class XmiDiagramExchangeTests {
         byte[] xmi = exporter.export(context(List.of(item), List.of()));
         String xml = new String(xmi, StandardCharsets.UTF_8);
         assertThat(xml).contains("href=\"http://schema.omg.org/spec/UML/2.1/uml.xml#String\"").doesNotContain("20131001");
+        var attributes = java.util.regex.Pattern.compile("<ownedAttribute [^>]*>").matcher(xml).results().map(m -> m.group()).toList();
+        assertThat(attributes).hasSize(4).noneMatch(tag -> tag.contains("aggregation="));
         assertThat(count(xml, "uml:DataType")).isEqualTo(2 + 3); // double y Date declarados una vez + 3 referencias
         assertThat(importer.parse(xmi).model().toString()).contains("total: double", "fecha: Date", "nombre: String");
     }
