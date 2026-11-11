@@ -2,7 +2,7 @@ import { useEffect, useReducer, useRef, useState } from 'react'
 import { Bot, Lock, MessageSquare, Send, X } from 'lucide-react'
 import { getChatHistory, getChatStatus, setHelpLevel } from '../api/chatApi'
 import { useAuth } from '../context/AuthContext'
-import { aiStatusLabel, chatReducer, initialChatState, isApplying, markApplying } from '../services/chatState'
+import { aiConnectionLabel, aiStatusLabel, chatReducer, initialChatState, isApplying, markApplying } from '../services/chatState'
 import { createChatSocket } from '../services/chatSocket'
 import './TeamChat.css'
 
@@ -43,7 +43,8 @@ function TeamChat({ projectId, diagramId, role, isOwner = false, onApplyChanges,
         const [history, status] = await Promise.all([getChatHistory(projectId), getChatStatus(projectId)])
         if (!active) return
         dispatch({ kind: 'history', messages: history.data })
-        dispatch({ kind: 'ai_status', connected: status.data.aiConnected, queued: status.data.queued })
+        dispatch({ kind: 'ai_status', connected: status.data.aiConnected, queued: status.data.queued,
+          source: status.data.aiSource, model: status.data.aiModel })
         dispatch({ kind: 'help_level', level: status.data.helpLevel })
       } catch {
         if (active) setError('No se pudo cargar el chat.')
@@ -110,8 +111,10 @@ function TeamChat({ projectId, diagramId, role, isOwner = false, onApplyChanges,
   }
 
   const canApply = Boolean(onApplyChanges) && (role === 'EDITOR' || role === 'OWNER')
-  const aiLabel = !state.aiConnected ? 'IA desconectada'
-    : state.queued > 0 ? `IA conectada · ${state.queued} en cola` : 'IA conectada'
+  const aiLabel = aiConnectionLabel(state)
+  const aiTitle = state.aiSource === 'nube'
+    ? 'Contesta la IA de respaldo en la nube porque el conector de la laptop no está conectado'
+    : state.aiSource === 'local' ? 'Contesta la IA local de la laptop (Ollama)' : undefined
   const hidden = variant === 'drawer' && !open
   const inputId = `team-chat-input-${variant}`
 
@@ -126,7 +129,7 @@ function TeamChat({ projectId, diagramId, role, isOwner = false, onApplyChanges,
         )}
       </header>
       <div className="team-chat-status">
-        <span className={`team-chat-ai ${state.aiConnected ? 'is-on' : 'is-off'}`}><Bot size={14} aria-hidden="true" /> {aiLabel}</span>
+        <span className={`team-chat-ai ${state.aiConnected ? 'is-on' : 'is-off'}`} title={aiTitle}><Bot size={14} aria-hidden="true" /> {aiLabel}</span>
         <label className="team-chat-level">Ayuda
           {isOwner
             ? <select value={state.helpLevel} onChange={(e) => changeLevel(e.target.value)}>{LEVELS.map((l) => <option key={l} value={l}>{LEVEL_LABELS[l]}</option>)}</select>

@@ -44,7 +44,8 @@ public class ChatController {
     @GetMapping("/status")
     public StatusResponse status(@PathVariable UUID projectId, @AuthenticationPrincipal User user) {
         var project = access.requireRead(projectId, user.getId()).project();
-        return new StatusResponse(queue.connected(), queue.size(), project.effectiveHelpLevel().name());
+        return new StatusResponse(queue.connected(), queue.size(), project.effectiveHelpLevel().name(), queue.source(),
+                queue.model());
     }
 
     @PutMapping("/help-level")
@@ -52,6 +53,6 @@ public class ChatController {
             @AuthenticationPrincipal User user) {
         HelpLevel level = chat.setHelpLevel(projectId, user.getId(), request.level());
         room.toAll(projectId, java.util.Map.of("kind", "help_level", "level", level.name()));
-        return new StatusResponse(queue.connected(), queue.size(), level.name());
+        return new StatusResponse(queue.connected(), queue.size(), level.name(), queue.source(), queue.model());
     }
 }

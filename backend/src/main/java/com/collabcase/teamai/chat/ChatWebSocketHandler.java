@@ -62,7 +62,13 @@ public class ChatWebSocketHandler extends TextWebSocketHandler {
     }
 
     private Map<String, Object> aiStatus() {
-        return Map.of("kind", "ai_status", "connected", queue.connected(), "queued", queue.size());
+        Map<String, Object> status = new java.util.LinkedHashMap<>();
+        status.put("kind", "ai_status");
+        status.put("connected", queue.connected());
+        status.put("queued", queue.size());
+        status.put("source", queue.source());
+        status.put("model", queue.model());
+        return status;
     }
 
     @Override

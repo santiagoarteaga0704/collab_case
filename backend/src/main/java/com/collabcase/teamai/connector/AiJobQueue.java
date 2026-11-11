@@ -168,6 +168,16 @@ public class AiJobQueue {
         }
     }
 
+    /** Quién contesta ahora: "local" (conector de la laptop), "nube" (IA de respaldo) o null si nadie. */
+    public String source() {
+        lock.lock();
+        try {
+            return link != null ? "local" : fallback != null ? "nube" : null;
+        } finally {
+            lock.unlock();
+        }
+    }
+
     public int size() {
         lock.lock();
         try {
@@ -354,6 +364,8 @@ public class AiJobQueue {
             running = job;
             ConnectorLink target = target();
             job.sentTo = target;
+            String who = target == link ? "IA local " + model : "IA en la nube " + fallbackModel;
+            log.info("Trabajo {} de IA: lo contesta {}", job.id, who);
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("kind", "job");
             payload.put("id", job.id.toString());

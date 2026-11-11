@@ -1,5 +1,5 @@
 export const initialChatState = {
-  messages: [], aiConnected: false, queued: 0, helpLevel: 'DRAW', positions: {},
+  messages: [], aiConnected: false, queued: 0, aiSource: null, aiModel: null, helpLevel: 'DRAW', positions: {},
 }
 
 const MENTION = /(^|\s)@ia\b/i
@@ -58,7 +58,8 @@ export function chatReducer(state, event) {
     case 'queue_position':
       return { ...state, positions: { ...state.positions, [event.messageId]: event.position } }
     case 'ai_status':
-      return { ...state, aiConnected: Boolean(event.connected), queued: event.queued ?? 0 }
+      return { ...state, aiConnected: Boolean(event.connected), queued: event.queued ?? 0,
+        aiSource: event.source ?? null, aiModel: event.model ?? null }
     case 'help_level':
       return { ...state, helpLevel: event.level }
     default:
@@ -88,4 +89,19 @@ export function aiStatusLabel(state, message) {
     if (content === OFFLINE_TEXT || content === TIMEOUT_TEXT) return content
   }
   return ''
+}
+
+/** Texto del estado de la IA: quién contesta (la laptop o la nube), con su modelo y la cola. */
+export function aiConnectionLabel(state) {
+  if (!state.aiConnected) return 'IA desconectada'
+  const model = prettyModel(state.aiModel)
+  const who = state.aiSource === 'nube' ? 'IA en la nube' : state.aiSource === 'local' ? 'IA local' : 'IA conectada'
+  const label = model ? `${who} · ${model}` : who
+  return state.queued > 0 ? `${label} · ${state.queued} en cola` : label
+}
+
+function prettyModel(model) {
+  if (!model) return ''
+  if (!model.startsWith('gemini')) return model
+  return model.split('-').map((p) => p.charAt(0).toUpperCase() + p.slice(1)).join(' ')
 }

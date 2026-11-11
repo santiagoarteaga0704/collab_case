@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { initialChatState, chatReducer, mentionsAi, aiStatusLabel, markApplying, isApplying } from './chatState.js'
+import { aiConnectionLabel, initialChatState, chatReducer, mentionsAi, aiStatusLabel, markApplying, isApplying } from './chatState.js'
 
 const msg = (id, extra = {}) => ({ id, content: '', status: 'COMPLETE', kind: 'AI', ...extra })
 
@@ -93,4 +93,12 @@ test('applyStaysDisabledUntilTheMessageChanges', () => {
   assert.equal(isApplying(applying, msg('b')), false)
   s = chatReducer(s, { kind: 'message_updated', message: msg('a', { proposalState: 'PENDING' }) })
   assert.equal(isApplying(applying, s.messages[0]), false)
+})
+
+test('aiConnectionLabelSaysWhoAnswers', () => {
+  const nube = chatReducer(initialChatState, { kind: 'ai_status', connected: true, queued: 0, source: 'nube', model: 'gemini-2.5-flash' })
+  assert.equal(aiConnectionLabel(nube), 'IA en la nube · Gemini 2.5 Flash')
+  const local = chatReducer(initialChatState, { kind: 'ai_status', connected: true, queued: 2, source: 'local', model: 'qwen3:4b-instruct' })
+  assert.equal(aiConnectionLabel(local), 'IA local · qwen3:4b-instruct · 2 en cola')
+  assert.equal(aiConnectionLabel(initialChatState), 'IA desconectada')
 })

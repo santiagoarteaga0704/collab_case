@@ -429,4 +429,15 @@ class AiJobQueueTests {
         assertThat(r.events).containsExactly("started", "finished(listo)");
         assertThat(fallback.sent).hasSize(1);
     }
+
+    @Test
+    void sourceSaysWhetherTheLaptopOrTheCloudAnswers() {
+        assertThat(queue.source()).isNull();
+        queue.useFallback(new FakeLink(), "gemini-2.5-flash");
+        assertThat(queue.source()).isEqualTo("nube");
+        queue.attach(link, "qwen3:4b-instruct");
+        assertThat(queue.source()).isEqualTo("local");
+        queue.detach(link);
+        assertThat(queue.source()).isEqualTo("nube");
+    }
 }

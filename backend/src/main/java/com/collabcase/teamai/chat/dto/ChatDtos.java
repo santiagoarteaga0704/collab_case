@@ -22,6 +22,7 @@ public final class ChatDtos {
     public record HelpLevelRequest(@NotNull HelpLevel level) {
     }
 
-    public record StatusResponse(boolean aiConnected, int queued, String helpLevel) {
+    /** aiSource: "local" (IA de la laptop), "nube" (IA de respaldo) o null; aiModel: el modelo que contesta. */
+    public record StatusResponse(boolean aiConnected, int queued, String helpLevel, String aiSource, String aiModel) {
     }
 }
