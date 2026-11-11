@@ -104,6 +104,13 @@ class XmiDiagramExchangeTests {
         assertThat(importer.parse(xmi).model().toString()).contains("total: double", "fecha: Date", "nombre: String");
     }
 
+    @Test void importsEaBuiltInTypeReferencesThatAreNotDeclared() {
+        String xml = header() + "<uml:Model xmi:id=\"m\" name=\"EA\"><packagedElement xmi:type=\"uml:Class\" xmi:id=\"c\" name=\"Cliente\">"
+                + "<ownedAttribute xmi:type=\"uml:Property\" xmi:id=\"p\" name=\"nombre\" visibility=\"private\"><type xmi:idref=\"EAJava_String\"/></ownedAttribute>"
+                + "</packagedElement></uml:Model></xmi:XMI>";
+        assertThat(importer.parse(xml.getBytes(StandardCharsets.UTF_8)).model().toString()).contains("nombre: String");
+    }
+
     @Test void exportContainsOneEaPackageOneLogicalDiagramAndNoPackagedPrimitiveTypes() {
         String xml = new String(exporter.export(twoClasses("ClassBidirectional", "1", "0..*")), StandardCharsets.UTF_8);
         assertThat(xml).contains("xmi:Documentation", "xmi:Extension", "<connectors>", "<diagrams>",
