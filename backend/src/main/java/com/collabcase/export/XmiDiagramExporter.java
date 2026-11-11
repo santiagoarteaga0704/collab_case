@@ -43,7 +43,12 @@ public class XmiDiagramExporter {
             root.setAttributeNS(XMLConstants.XMLNS_ATTRIBUTE_NS_URI, "xmlns:uml", UML);
             xmi(root, "version", "2.1"); d.appendChild(root);
             Element documentation = add(d, root, XMI, "xmi:Documentation");
-            documentation.setAttribute("exporter", "Collab CASE"); documentation.setAttribute("exporterVersion", "1.0");
+            // Enterprise Architect solo lee su sección de diagramas si el documento dice haber salido de EA: con otro
+            // nombre importa las clases y descarta el diagrama sin avisar (comprobado en FORJA). Quién lo generó
+            // queda en el comentario de abajo y en el autor del diagrama.
+            documentation.setAttribute("exporter", "Enterprise Architect"); documentation.setAttribute("exporterVersion", "6.5");
+            documentation.setAttribute("exporterID", "1625");
+            root.insertBefore(d.createComment(" Generado por Collab CASE. Se declara como Enterprise Architect para que EA importe el diagrama. "), documentation);
             String title = blank(context.title()) ? "Collab CASE Model" : context.title();
             String packageId = id("EAPK"), diagramId = id("EAID");
             Element model = add(d, root, UML, "uml:Model"); xmi(model, "type", "uml:Model"); model.setAttribute("name", "EA_Model"); model.setAttribute("visibility", "public");

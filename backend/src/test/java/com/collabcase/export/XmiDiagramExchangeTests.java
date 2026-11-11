@@ -85,6 +85,7 @@ class XmiDiagramExchangeTests {
         String xml = new String(exporter.export(context(List.of(a, b), List.of(r))), StandardCharsets.UTF_8);
         var ids = java.util.regex.Pattern.compile("xmi:id=\"([^\"]+)\"").matcher(xml).results().map(m -> m.group(1)).toList();
         assertThat(ids).doesNotHaveDuplicates();
+        assertThat(xml).contains("exporter=\"Enterprise Architect\"", "exporterVersion=\"6.5\"");
         var duids = java.util.regex.Pattern.compile("DUID=([0-9A-F]+);").matcher(xml).results().map(m -> m.group(1)).toList();
         assertThat(duids).hasSize(2);
         assertThat(xml).contains("EOID=" + duids.get(1) + ";SOID=" + duids.get(0) + ";");
