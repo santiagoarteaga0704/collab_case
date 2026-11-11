@@ -87,7 +87,8 @@ class _LoginScreenState extends State<LoginScreen> {
                     const SizedBox(height: 24),
                     if (_registering) ...[
                       TextFormField(
-                        controller: _name,
+                        key: const ValueKey('name'),
+                      controller: _name,
                         decoration: const InputDecoration(labelText: 'Nombre'),
                         textCapitalization: TextCapitalization.words,
                         validator: (v) => (v ?? '').trim().isEmpty ? 'Escribe tu nombre.' : null,
@@ -95,6 +96,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       const SizedBox(height: 14),
                     ],
                     TextFormField(
+                      key: const ValueKey('email'),
                       controller: _email,
                       decoration: const InputDecoration(labelText: 'Correo'),
                       keyboardType: TextInputType.emailAddress,
@@ -103,6 +105,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     ),
                     const SizedBox(height: 14),
                     TextFormField(
+                      key: const ValueKey('password'),
                       controller: _password,
                       obscureText: _hidden,
                       decoration: InputDecoration(
@@ -122,6 +125,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     if (_registering) ...[
                       const SizedBox(height: 14),
                       TextFormField(
+                        key: const ValueKey('confirmation'),
                         controller: _confirmation,
                         obscureText: _hidden,
                         decoration: const InputDecoration(labelText: 'Repite la contraseña'),
@@ -147,10 +151,13 @@ class _LoginScreenState extends State<LoginScreen> {
                     TextButton(
                       onPressed: _busy
                           ? null
-                          : () => setState(() {
+                          : () {
+                              _form.currentState?.reset();
+                              setState(() {
                                 _registering = !_registering;
                                 _error = '';
-                              }),
+                              });
+                            },
                       child: Text(_registering ? '¿Ya tienes cuenta? Inicia sesión' : '¿No tienes cuenta? Regístrate'),
                     ),
                   ],

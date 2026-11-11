@@ -1,17 +1,27 @@
-# collab_case_movil
+# Collab CASE — app de teléfono
 
-A new Flutter project.
+App Android en Flutter que usa el mismo backend que la web (AWS:
+`https://d2x41sl49sltgo.cloudfront.net`). Tiene los mismos requisitos que la web:
 
-## Getting Started
+| Pantalla | Qué hace | Cómo |
+|---|---|---|
+| Ingreso / registro | Cuenta y sesión guardada en el teléfono | Nativo (`/api/auth`) |
+| Proyectos | Listar, crear, renombrar, eliminar | Nativo (`/api/projects`) |
+| Proyecto → Diagramas | Versiones (cambiar, crear, renombrar, eliminar) y diagramas | Nativo |
+| Proyecto → Chat del equipo | Chat en vivo con la IA: `@IA`, modo privado, cola, nivel de ayuda (Explicar / Sugerir / Dibujar), `@IA resumen`, dictado por voz | Nativo (`/ws/chat/{id}`), misma lógica que `TeamChat.jsx` |
+| Proyecto → Miembros | Agregar por correo, cambiar rol, quitar (solo propietario) | Nativo |
+| Agente de ayuda | Explica cómo usar la herramienta y hace acciones | Nativo (`/api/agent`) |
+| Editor UML | Edición en vivo, la IA dibuja, asistente de modelado, foto de pizarra, voz, exportar, generar código | El editor web dentro de la app (Apollon y Yjs solo existen para la web), con `assets/editor_movil.js` para pantalla de celular y descargas |
 
-This project is a starting point for a Flutter application.
+## Compilar e instalar
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+flutter pub get
+flutter test
+flutter build apk --release        # build/app/outputs/flutter-apk/app-release.apk
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+Otro servidor: `flutter build apk --release --dart-define=SERVIDOR=https://otro-servidor`.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+La IA sigue corriendo en la laptop: para que responda, el conector (`conector-ia/`) tiene
+que estar encendido, igual que para la web.
