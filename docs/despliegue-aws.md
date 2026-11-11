@@ -66,6 +66,21 @@ apagada. Si el conector se conecta, vuelve a contestar la IA local. El perfil `a
 (`IA_RESPALDO=gemini`); para apagarlo, `IA_RESPALDO=` vacío en `/opt/collab-case/.env` y volver a levantar.
 Otro modelo: `IA_RESPALDO_MODEL=...`.
 
+## Límite gratis de Gemini
+
+El plan gratis de Gemini da **20 pedidos por día por modelo** (gemini-2.5-flash se agotó el 11-nov con las pruebas).
+Cada modelo tiene su propio límite, así que el servidor quedó repartido en `/opt/collab-case/.env`:
+
+```
+IA_RESPALDO_MODEL=gemini-3.5-flash        # chat del equipo, panel de análisis y agente (~2-4 s)
+STT_GEMINI_MODEL=gemini-3.1-flash-lite     # voz
+VISION_GEMINI_MODEL=gemini-3.1-flash-lite  # foto de pizarra (~17 s)
+```
+
+`STT_GEMINI_MODEL` y `VISION_GEMINI_MODEL` los pasa `compose.override.yml` del servidor. Si sale «La IA llegó a su
+límite de uso de hoy», cambiar a otro modelo de la lista (`GET /v1beta/models`) y `docker compose -f compose.yml -f
+compose.override.yml up -d`, o activar la facturación en AI Studio (Tier 1) para no depender del límite gratis.
+
 ## Trampas
 
 - `t3.micro` tiene 1 GB: la JVM va con `-Xmx512m` y Postgres con `shared_buffers=64MB` (en `compose.aws.yml`); sin el swap no arranca.
