@@ -6,3 +6,4 @@
   Idea: un comando del tipo «agrega Mouse al pedido 3» que mande la relación en la mutación.
 - `/api/mobile/changes` devuelve `productoIds` (ids de la base) y no `productoSyncIds`; si la app
   empieza a usar relaciones, conviene que el cambio traiga los `syncId`.
+- **Checklist de pruebas manuales** de todos los requisitos del 2do parcial (pedido para el 11-nov-2026), con el formato del checklist de MirrorIA.
