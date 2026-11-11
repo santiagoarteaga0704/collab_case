@@ -372,4 +372,46 @@ class AiJobQueueTests {
         assertThat(link.sent).hasSize(2);
         assertThat(second.events).containsExactly("queued(2)", "queued(1)", "started");
     }
+    @Test
+    void withoutConnectorTheFallbackTakesTheJobs() {
+        FakeLink fallback = new FakeLink();
+        queue.useFallback(fallback, "gemini-2.5-flash");
+        Recorder r = new Recorder();
+        UUID id = submit(r);
+
+        assertThat(queue.connected()).isTrue();
+        assertThat(queue.model()).isEqualTo("gemini-2.5-flash");
+        assertThat(fallback.idOf(0)).isEqualTo(id);
+        queue.onFinished(id, "listo");
+        assertThat(r.events).containsExactly("started", "finished(listo)");
+    }
+
+    @Test
+    void theLaptopConnectorWinsOverTheFallback() {
+        FakeLink fallback = new FakeLink();
+        queue.useFallback(fallback, "gemini-2.5-flash");
+        queue.attach(link, "qwen3:4b-instruct");
+        submit(new Recorder());
+
+        assertThat(link.sent).hasSize(1);
+        assertThat(fallback.sent).isEmpty();
+        assertThat(queue.model()).isEqualTo("qwen3:4b-instruct");
+    }
+
+    @Test
+    void whenTheLaptopLeavesTheWaitingJobsMoveToTheFallback() {
+        FakeLink fallback = new FakeLink();
+        queue.useFallback(fallback, "gemini-2.5-flash");
+        queue.attach(link, "qwen3:4b-instruct");
+        Recorder r1 = new Recorder(), r2 = new Recorder();
+        submit(r1);
+        UUID id2 = submit(r2);
+
+        queue.detach(link);
+
+        assertThat(r1.events).containsExactly("started", "failed(IA desconectada)");
+        assertThat(r2.events).containsExactly("queued(1)", "started");
+        assertThat(fallback.idOf(0)).isEqualTo(id2);
+        assertThat(queue.connected()).isTrue();
+    }
 }

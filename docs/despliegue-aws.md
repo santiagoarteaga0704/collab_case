@@ -10,7 +10,7 @@ URL pública: **https://d2x41sl49sltgo.cloudfront.net**
 | Grupo de seguridad | `collab-case`: HTTP 80 y SSH 22 desde 0.0.0.0/0 |
 | HTTPS | CloudFront `E18KFOZ92MSIRJ` → origen `ec2-13-58-79-94.us-east-2.compute.amazonaws.com`, HTTP only 80, Redirect HTTP→HTTPS, todos los métodos, `CachingDisabled`, `AllViewer`, timeout de lectura 60 s |
 | App | `/opt/collab-case/` en el servidor: `compose.yml` (= `compose.aws.yml`), `compose.override.yml`, `.env` (secretos, no versionado) |
-| IA | No corre en AWS: el conector (`conector-ia/`) corre en la laptop con Ollama y se conecta a `wss://d2x41sl49sltgo.cloudfront.net/ws/ai-connector` |
+| IA | Si la laptop está conectada, contesta la IA local: el conector (`conector-ia/`) corre con Ollama y se conecta a `wss://d2x41sl49sltgo.cloudfront.net/ws/ai-connector`. Si no, contesta Gemini como respaldo (ver «IA de respaldo») |
 
 HTTPS es obligatorio: `crypto.randomUUID()` del editor solo existe en contexto seguro.
 
@@ -58,6 +58,13 @@ El perfil `aws` transcribe la voz y lee la foto de la pizarra con Gemini (`gemin
 equipo sigue siendo local (conector + Ollama). La clave sale gratis de https://aistudio.google.com/apikey y va en
 `/opt/collab-case/.env` como `GEMINI_API_KEY=...`; tras cambiarla, `docker compose -f compose.yml -f compose.override.yml up -d`.
 Otro modelo: `GEMINI_MODEL=...` en el mismo `.env`.
+
+## IA de respaldo (Gemini)
+Cuando el conector de la laptop no está conectado, la IA miembro del equipo, el panel de análisis y el agente
+contestan con Gemini (`gemini-2.5-flash`, la misma `GEMINI_API_KEY`), así la página funciona aunque la laptop esté
+apagada. Si el conector se conecta, vuelve a contestar la IA local. El perfil `aws` lo trae prendido
+(`IA_RESPALDO=gemini`); para apagarlo, `IA_RESPALDO=` vacío en `/opt/collab-case/.env` y volver a levantar.
+Otro modelo: `IA_RESPALDO_MODEL=...`.
 
 ## Trampas
 

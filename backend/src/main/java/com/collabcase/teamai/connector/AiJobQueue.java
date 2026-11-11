@@ -64,6 +64,9 @@ public class AiJobQueue {
     private Job running;
     private ConnectorLink link;
     private String model;
+    /** IA en la nube que atiende los trabajos mientras el conector de la laptop no está. */
+    private ConnectorLink fallback;
+    private String fallbackModel;
     private final List<Runnable> changeListeners = new CopyOnWriteArrayList<>();
     private volatile Duration blockingWait = BLOCKING_WAIT;
 
@@ -96,6 +99,23 @@ public class AiJobQueue {
         }
     }
 
+    /** Deja una IA de respaldo para cuando no hay conector; el conector, si se conecta, tiene prioridad. */
+    public void useFallback(ConnectorLink fallbackLink, String model) {
+        lock.lock();
+        try {
+            fallback = fallbackLink;
+            fallbackModel = model;
+        } finally {
+            lock.unlock();
+        }
+        fireChange();
+    }
+
+    /** Debe llamarse con el lock tomado. */
+    private ConnectorLink target() {
+        return link != null ? link : fallback;
+    }
+
     public void attach(ConnectorLink newLink, String newModel) {
         List<Runnable> actions = new ArrayList<>();
         lock.lock();
@@ -119,9 +139,17 @@ public class AiJobQueue {
             if (link != oldLink) {
                 return;
             }
-            failAll(OFFLINE_REASON, actions);
+            if (fallback == null) {
+                failAll(OFFLINE_REASON, actions);
+            } else if (running != null) {
+                // lo que corría en la laptop se pierde; los que esperan siguen con la IA de respaldo
+                AiJobListener listener = running.listener;
+                running = null;
+                actions.add(() -> listener.failed(OFFLINE_REASON));
+            }
             link = null;
             model = null;
+            startNext(actions);
         } finally {
             lock.unlock();
         }
@@ -132,7 +160,7 @@ public class AiJobQueue {
     public boolean connected() {
         lock.lock();
         try {
-            return link != null;
+            return target() != null;
         } finally {
             lock.unlock();
         }
@@ -150,7 +178,7 @@ public class AiJobQueue {
     public String model() {
         lock.lock();
         try {
-            return model;
+            return link != null ? model : fallback != null ? fallbackModel : null;
         } finally {
             lock.unlock();
         }
@@ -161,7 +189,7 @@ public class AiJobQueue {
         UUID id;
         lock.lock();
         try {
-            if (link == null) {
+            if (target() == null) {
                 throw new AiUnavailableException(AiUnavailableException.Reason.OFFLINE);
             }
             if (size() >= MAX_JOBS) {
@@ -263,7 +291,7 @@ public class AiJobQueue {
         try {
             if (running != null && running.id.equals(jobId)) {
                 running = null;
-                ConnectorLink target = link;
+                ConnectorLink target = target();
                 if (target != null) {
                     Map<String, Object> cancel = new LinkedHashMap<>();
                     cancel.put("kind", "cancel");
@@ -318,11 +346,11 @@ public class AiJobQueue {
 
     /** Debe llamarse con el lock tomado. Arranca el siguiente y renumera a los que esperan. */
     private void startNext(List<Runnable> actions) {
-        if (running == null && link != null && !waiting.isEmpty()) {
+        if (running == null && target() != null && !waiting.isEmpty()) {
             Job job = waiting.pollFirst();
             job.startedAt = clock.instant();
             running = job;
-            ConnectorLink target = link;
+            ConnectorLink target = target();
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("kind", "job");
             payload.put("id", job.id.toString());
