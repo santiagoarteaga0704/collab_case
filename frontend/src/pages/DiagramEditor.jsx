@@ -106,6 +106,7 @@ function DiagramEditor() {
   const [codegenValidation, setCodegenValidation] = useState()
   const [codegenError, setCodegenError] = useState('')
   const [isCodegenBusy, setIsCodegenBusy] = useState(false)
+  const [codegenDownloaded, setCodegenDownloaded] = useState(0)
   const diagramIdRef = useRef(diagramId ?? null)
   const editorRef = useRef()
   const socketRef = useRef()
@@ -408,9 +409,10 @@ function DiagramEditor() {
   async function downloadBackend() {
     setIsCodegenBusy(true)
     setCodegenError('')
+    setCodegenDownloaded(0)
     try {
       await flushPendingSave()
-      const response = await downloadGeneratedBackend(diagramId)
+      const response = await downloadGeneratedBackend(diagramId, (event) => setCodegenDownloaded(event.loaded ?? 0))
       const url = URL.createObjectURL(response.data)
       const anchor = document.createElement('a')
       anchor.href = url
@@ -418,9 +420,15 @@ function DiagramEditor() {
       anchor.click()
       URL.revokeObjectURL(url)
     } catch (error) {
-      setCodegenError(error.response?.data?.message ?? error.message ?? 'No se pudo generar el backend.')
+      // con responseType blob el error del servidor llega como Blob: se lee para mostrar su mensaje
+      let message = error.response?.data?.message
+      if (!message && error.response?.data instanceof Blob) {
+        try { message = JSON.parse(await error.response.data.text()).message } catch { message = undefined }
+      }
+      setCodegenError(message ?? error.message ?? 'No se pudo generar el backend.')
     } finally {
       setIsCodegenBusy(false)
+      setCodegenDownloaded(0)
     }
   }
 
@@ -1217,7 +1225,9 @@ function DiagramEditor() {
             {codegenValidation?.errors?.length > 0 && <div className="ai-error"><strong>Errores</strong><ul>{codegenValidation.errors.map((item) => <li key={item}>{item}</li>)}</ul></div>}
             {codegenValidation?.warnings?.length > 0 && <div className="export-warnings"><strong>Advertencias</strong><ul>{codegenValidation.warnings.map((item) => <li key={item}>{item}</li>)}</ul></div>}
             {codegenError && <p className="ai-error">{codegenError}</p>}
-            {isCodegenBusy && <p>Procesando...</p>}
+            {isCodegenBusy && <p role="status">{codegenDownloaded > 0
+              ? `Descargando el proyecto… ${(codegenDownloaded / 1048576).toFixed(0)} MB de unos 260 MB (trae el APK listo; puede tardar unos minutos).`
+              : 'Generando el proyecto… la descarga pesa unos 260 MB porque incluye el APK.'}</p>}
             <div className="export-actions">
               <button type="button" className="secondary-button" disabled={isCodegenBusy} onClick={validateCodegen}>Validar diagrama</button>
               <button type="button" className="primary-button" disabled={isCodegenBusy || !codegenValidation?.valid} onClick={downloadBackend}><Download size={16} aria-hidden="true" /> Descargar proyecto</button>
