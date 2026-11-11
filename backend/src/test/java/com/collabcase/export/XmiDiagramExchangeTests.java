@@ -91,6 +91,17 @@ class XmiDiagramExchangeTests {
         assertThat(xml).contains("EOID=" + duids.get(1) + ";SOID=" + duids.get(0) + ";");
     }
 
+    @Test void attributeTypesUseHrefsEaKnowsOrDeclaredDataTypes() {
+        var item = new AiClassContext("a", "Venta", List.of(new AiAttributeContext("a1", "nombre", "String", "+ nombre: String"),
+                new AiAttributeContext("a2", "total", "double", "+ total: double"), new AiAttributeContext("a3", "fecha", "Date", "+ fecha: Date"),
+                new AiAttributeContext("a4", "pagada", "double", "+ pagada: double")), List.of());
+        byte[] xmi = exporter.export(context(List.of(item), List.of()));
+        String xml = new String(xmi, StandardCharsets.UTF_8);
+        assertThat(xml).contains("href=\"http://schema.omg.org/spec/UML/2.1/uml.xml#String\"").doesNotContain("20131001");
+        assertThat(count(xml, "uml:DataType")).isEqualTo(2 + 3); // double y Date declarados una vez + 3 referencias
+        assertThat(importer.parse(xmi).model().toString()).contains("total: double", "fecha: Date", "nombre: String");
+    }
+
     @Test void exportContainsOneEaPackageOneLogicalDiagramAndNoPackagedPrimitiveTypes() {
         String xml = new String(exporter.export(twoClasses("ClassBidirectional", "1", "0..*")), StandardCharsets.UTF_8);
         assertThat(xml).contains("xmi:Documentation", "xmi:Extension", "<connectors>", "<diagrams>",

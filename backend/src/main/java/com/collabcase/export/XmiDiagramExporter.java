@@ -26,6 +26,12 @@ import com.collabcase.xmi.RelationshipTypeMapper.Mapping;
 public class XmiDiagramExporter {
     static final String XMI = "http://schema.omg.org/spec/XMI/2.1";
     static final String UML = "http://schema.omg.org/spec/UML/2.1";
+    /**
+     * Primitivos de UML que EA reconoce por href. La dirección es la de UML 2.1: ante la de UML 2.5
+     * (.../UML/20131001/PrimitiveTypes.xmi) EA no da error, descarta el atributo (comprobado en FORJA).
+     */
+    static final String PRIMITIVES_HREF = "http://schema.omg.org/spec/UML/2.1/uml.xml#";
+    static final java.util.Set<String> UML_PRIMITIVES = java.util.Set.of("String", "Integer", "Boolean", "Real", "UnlimitedNatural");
     private final RelationshipTypeMapper relationshipTypes;
 
     public XmiDiagramExporter(RelationshipTypeMapper relationshipTypes) {
@@ -55,6 +61,7 @@ public class XmiDiagramExporter {
             Element pack = packaged(d, "uml:Package", packageId, title); model.appendChild(pack);
 
             Map<String, String> classIds = new LinkedHashMap<>(), relationIds = new LinkedHashMap<>();
+            Types types = new Types(d, pack);
             Map<String, AiClassContext> classes = new LinkedHashMap<>();
             for (AiClassContext item : context.classes()) { classIds.put(item.id(), id("EAID")); classes.put(item.id(), item); }
             for (AiRelationshipContext item : context.relationships()) relationIds.put(item.id(), id("EAID"));
@@ -62,11 +69,11 @@ public class XmiDiagramExporter {
                 Element clazz = packaged(d, "uml:Class", classIds.get(item.id()), item.name());
                 for (var attribute : item.attributes()) {
                     Element property = add(d, clazz, null, "ownedAttribute"); property(property, id("EAID"), attribute.name(), visibility(attribute.displayName()), "none");
-                    bounds(d, property, "1", id("EAID_LI")); type(d, property, attribute.type());
+                    bounds(d, property, "1", id("EAID_LI")); types.ref(property, attribute.type(), true);
                 }
                 for (var method : item.methods()) {
                     Element operation = add(d, clazz, null, "ownedOperation"); xmi(operation, "type", "uml:Operation"); xmi(operation, "id", id("EAID"));
-                    operation.setAttribute("name", method.name()); operation.setAttribute("visibility", visibility(method.signature())); parameters(d, operation, method.signature());
+                    operation.setAttribute("name", method.name()); operation.setAttribute("visibility", visibility(method.signature())); parameters(d, operation, method.signature(), types);
                 }
                 context.relationships().stream().filter(r -> "ClassInheritance".equals(r.relationshipType()) && item.id().equals(r.sourceElementId()))
                         .filter(r -> classIds.containsKey(r.targetElementId())).forEach(r -> { Element g = add(d, clazz, null, "generalization"); xmi(g, "type", "uml:Generalization"); xmi(g, "id", relationIds.get(r.id())); g.setAttribute("general", classIds.get(r.targetElementId())); });
@@ -137,8 +144,33 @@ public class XmiDiagramExporter {
     private void associationEnd(Document d, Element association, String endId, String associationId, String classId, String cardinality, String aggregation) { Element member = add(d, association, null, "memberEnd"); xmi(member, "idref", endId); Element end = add(d, association, null, "ownedEnd"); property(end, endId, null, "public", aggregation); end.setAttribute("association", associationId); Element type = add(d, end, null, "type"); xmi(type, "idref", classId); bounds(d, end, cardinality, endId); }
     private void property(Element e, String id, String name, String visibility, String aggregation) { xmi(e, "type", "uml:Property"); xmi(e, "id", id); if (!blank(name)) e.setAttribute("name", name); e.setAttribute("visibility", visibility); e.setAttribute("isStatic", "false"); e.setAttribute("isReadOnly", "false"); e.setAttribute("isDerived", "false"); e.setAttribute("isOrdered", "false"); e.setAttribute("isUnique", "true"); e.setAttribute("aggregation", aggregation); }
     private void bounds(Document d, Element parent, String cardinality, String prefix) { String[] b = bounds(cardinality); Element lower = add(d, parent, null, "lowerValue"); xmi(lower, "type", "uml:LiteralInteger"); xmi(lower, "id", prefix + "_lower"); lower.setAttribute("value", b[0]); Element upper = add(d, parent, null, "upperValue"); xmi(upper, "type", "-1".equals(b[1]) ? "uml:LiteralUnlimitedNatural" : "uml:LiteralInteger"); xmi(upper, "id", prefix + "_upper"); upper.setAttribute("value", b[1]); }
-    private void type(Document d, Element parent, String name) { if (blank(name)) return; Element type = add(d, parent, null, "type"); xmi(type, "type", "uml:PrimitiveType"); type.setAttribute("href", "http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#" + name.trim()); }
-    private void parameters(Document d, Element operation, String signature) { if (signature == null) return; int open = signature.indexOf('('), close = signature.lastIndexOf(')'); if (open >= 0 && close > open) for (String raw : signature.substring(open + 1, close).split(",")) { if (raw.isBlank()) continue; String[] parts = raw.trim().split("\\s*:\\s*", 2); Element p = add(d, operation, null, "ownedParameter"); xmi(p, "type", "uml:Parameter"); xmi(p, "id", id("EAID")); p.setAttribute("name", parts[0]); if (parts.length == 2) type(d, p, parts[1]); } int colon = close < 0 ? -1 : signature.indexOf(':', close); if (colon >= 0) { Element p = add(d, operation, null, "ownedParameter"); xmi(p, "type", "uml:Parameter"); xmi(p, "id", id("EAID")); p.setAttribute("direction", "return"); type(d, p, signature.substring(colon + 1).trim()); } }
+    /**
+     * Tipos de atributos y parámetros: los primitivos de UML van por href; los demás (int, double, Date...) se
+     * declaran una vez como uml:DataType en el paquete, para que EA muestre el tipo con su nombre.
+     */
+    private final class Types {
+        private final Document d;
+        private final Element pack;
+        private final Map<String, String> declared = new LinkedHashMap<>();
+
+        Types(Document d, Element pack) { this.d = d; this.pack = pack; }
+
+        void ref(Element owner, String raw, boolean attribute) {
+            if (blank(raw)) return;
+            String name = raw.trim();
+            Element type = d.createElement("type");
+            if (UML_PRIMITIVES.contains(name)) {
+                xmi(type, "type", "uml:PrimitiveType"); type.setAttribute("href", PRIMITIVES_HREF + name);
+            } else {
+                String id = declared.computeIfAbsent(name, key -> { String newId = id("EAID"); pack.appendChild(packaged(d, "uml:DataType", newId, key)); return newId; });
+                // con el idref solo, EA creaba el DataType pero dejaba el atributo sin tipo; el atributo type lo resuelve
+                if (attribute) owner.setAttribute("type", id);
+                xmi(type, "type", "uml:DataType"); xmi(type, "idref", id);
+            }
+            owner.appendChild(type);
+        }
+    }
+    private void parameters(Document d, Element operation, String signature, Types types) { if (signature == null) return; int open = signature.indexOf('('), close = signature.lastIndexOf(')'); if (open >= 0 && close > open) for (String raw : signature.substring(open + 1, close).split(",")) { if (raw.isBlank()) continue; String[] parts = raw.trim().split("\\s*:\\s*", 2); Element p = add(d, operation, null, "ownedParameter"); xmi(p, "type", "uml:Parameter"); xmi(p, "id", id("EAID")); p.setAttribute("name", parts[0]); if (parts.length == 2) types.ref(p, parts[1], false); } int colon = close < 0 ? -1 : signature.indexOf(':', close); if (colon >= 0) { Element p = add(d, operation, null, "ownedParameter"); xmi(p, "type", "uml:Parameter"); xmi(p, "id", id("EAID")); p.setAttribute("direction", "return"); types.ref(p, signature.substring(colon + 1).trim(), false); } }
     @SuppressWarnings("unchecked") private Map<String, Map<String, Object>> rawNodes(Map<String, Object> model) { Map<String, Map<String, Object>> result = new LinkedHashMap<>(); Object value = model == null ? null : model.get("nodes"); if (value instanceof List<?> list) for (Object raw : list) if (raw instanceof Map<?, ?> map) { Map<String, Object> node = (Map<String, Object>) map; if (node.get("id") != null) result.put(node.get("id").toString(), node); } return result; }
     @SuppressWarnings("unchecked") private Map<String, Object> nested(Map<String, Object> map, String key) { Object value = map == null ? null : map.get(key); return value instanceof Map<?, ?> ? (Map<String, Object>) value : Map.of(); }
     private Element packaged(Document d, String type, String id, String name) { Element e = d.createElement("packagedElement"); xmi(e, "type", type); xmi(e, "id", id); if (!blank(name)) e.setAttribute("name", name); e.setAttribute("visibility", "public"); return e; }

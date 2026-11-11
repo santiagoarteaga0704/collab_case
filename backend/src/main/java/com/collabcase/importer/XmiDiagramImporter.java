@@ -52,7 +52,7 @@ public class XmiDiagramImporter {
             var packaged = document.getElementsByTagNameNS("*", "packagedElement");
             for (int i = 0; i < packaged.getLength(); i++) {
                 Element element = (Element) packaged.item(i); String type = xmi(element, "type"); String id = xmi(element, "id");
-                if (type.endsWith("PrimitiveType")) typeNames.put(id, element.getAttribute("name"));
+                if (type.endsWith("PrimitiveType") || type.endsWith("DataType")) typeNames.put(id, element.getAttribute("name"));
                 else if (type.endsWith("Class")) classElements.put(id, element);
                 else if (type.endsWith("Association") || type.endsWith("Dependency") || type.endsWith("Realization")) relationships.add(element);
                 else if (!type.isBlank() && !type.endsWith("Package") && !type.endsWith("Model"))
